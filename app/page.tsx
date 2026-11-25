@@ -35,7 +35,11 @@ export default async function Home() {
         <section className="panel">
           <h2>Revenue trend</h2>
           <p className="sub">Settled payments · last 14 days · THB</p>
-          <Trend data={m.trend} />
+          {m.trend.length ? (
+            <Trend data={m.trend} />
+          ) : (
+            <p>No settled payments in the last 14 days.</p>
+          )}
         </section>
         <section className="hero">
           <Sparkles size={24} />

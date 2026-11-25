@@ -16,6 +16,46 @@ npm run dev -- --hostname 127.0.0.1
 
 Open **http://127.0.0.1:3000**. The reset command replaces the fixed demo merchant’s records in one transaction in the database selected by DATABASE_URL. The default file is prisma/demo.db. To preserve an existing database, run `npx prisma migrate deploy` in place of reset. Local preparation and all migrations use the locked versions.
 
+## Local MCP client
+
+Codex CLI 0.172.0 can read outstanding balances, prepare a payment link and read back its action ID. PayPilot serves MCP over stdio. The adapter sends requests to the merchant HTTP API on loopback. Only the web app selects and opens SQLite.
+
+From the checkout root, start a fresh synthetic ledger on a dedicated port:
+
+```sh
+export DATABASE_URL="file:$(mktemp -d)/paypilot.db"
+npm ci
+npx prisma generate
+npm run reset
+npm run dev -- --hostname 127.0.0.1 --port 43791
+```
+
+In a second shell at the same checkout, register the server and open a signed-in interactive Codex client. The client starts the stdio process when it connects.
+
+```sh
+codex mcp add paypilot --env PAYPILOT_ORIGIN=http://127.0.0.1:43791 -- \
+  "$(command -v node)" "$PWD/node_modules/tsx/dist/cli.mjs" "$PWD/scripts/mcp.ts"
+codex
+```
+
+For a direct server launch, use `PAYPILOT_ORIGIN=http://127.0.0.1:43791 node node_modules/tsx/dist/cli.mjs scripts/mcp.ts`. It waits for MCP messages on stdin.
+
+1. Ask “Use PayPilot to read the outstanding amount and order count.”
+2. Ask “Prepare one QR payment link for Demo Studio for Website design, THB 5,000.” Review the preview and save its `actionId`. Open the returned `reviewUrl` in the merchant browser and click **อนุมัติและสร้างลิงก์**.
+3. Ask “Use PayPilot to read action ID <paste ID> and return its checkout URL.” Compare it with **Open verified checkout** in the browser. The server exposes only `read_outstanding`, `propose_payment_link` and `read_action`. The latter reads `GET /api/action?id=…`, which scopes the action through its merchant run.
+
+### Isolated QA on 2026-11-25
+
+| Check | Observed result |
+|---|---|
+| Discovery | The SDK 1.32.2 stdio client called `tools/list` and received three tool descriptions and strict input schemas. Codex CLI 0.172.0 discovered and executed all three across two model turns. |
+| Outstanding | Codex returned 8 orders and 3,410,000 satang. `GET /api/dashboard` returned `open=8, pending=3410000`. SQLite count and sum for Studio Bangkok OPEN orders matched both. |
+| Proposal | Codex proposed 500,000 satang. Action `cmww23k5w0001e9z9fidfl8bp` returned PROPOSED with a null checkout URL. SQLite had 24 orders and 24 links before and after the proposal. |
+| Merchant approval and readback | Playwright in Chrome clicked the approval button in the merchant UI. SQLite then contained 25 orders and 25 links. Codex read the original action ID and returned EXECUTED with the exact resolved browser URL ending in `/pay/a97b4da5-5902-4ef0-bca4-07f62695564a`. The HTTP action DTO returned the same path. |
+| Invalid and foreign input | An SDK fixture called the tools with a negative amount, an extra merchant argument and an existing action seeded under another merchant. The first two returned invalid arguments and the foreign read returned HTTP 404. Order and link counts stayed at 24 each through these checks. |
+
+The discovery response, model-selected calls, returned previews and fixture errors are recorded in [the MCP transcript](evidence/mcp-calls.json). The approval click was browser-automated for QA. All rows used a temporary database with synthetic records.
+
 ## Three-minute interview script
 
 | เวลา | พูดและสาธิต |

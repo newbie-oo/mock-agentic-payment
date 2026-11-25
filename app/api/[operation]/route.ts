@@ -16,7 +16,7 @@ import {
   createInput,
   replaceInput,
 } from "@/lib/service";
-const id = z.string().min(1).max(100);
+import { recordId as id } from "@/lib/proposal-input";
 function json(value: unknown, status = 200) {
   const codes: Record<number, string> = {
     400: "INVALID_REQUEST",
@@ -87,6 +87,14 @@ export async function GET(req: Request, { params }: Context) {
         return json(await orders(page));
       case "link":
         return json(await getLink(id.parse(q.get("id"))));
+      case "action":
+        return json(
+          actionDTO(
+            await db.agentAction.findFirstOrThrow({
+              where: { id: id.parse(q.get("id")), run: { merchant } },
+            }),
+          ),
+        );
       case "run":
         return json(await inspectRun(id.parse(q.get("id"))));
       default:

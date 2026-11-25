@@ -1,0 +1,191 @@
+{
+  "sdkToolsList": [
+    {
+      "name": "read_outstanding",
+      "description": "Read the merchant's outstanding order count and total in THB satang.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "propose_payment_link",
+      "description": "Prepare a sandbox payment link for merchant review. Amount is integer satang. The merchant approves in the web UI.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "THB satang, 100 per baht"
+          },
+          "currency": {
+            "default": "THB",
+            "type": "string",
+            "const": "THB"
+          },
+          "customer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 250
+          },
+          "methods": {
+            "default": [
+              "QR"
+            ],
+            "minItems": 1,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "QR",
+                "CARD"
+              ]
+            }
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "amount",
+          "customer",
+          "description"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "read_action",
+      "description": "Read a merchant action by its original actionId, including the checkout URL after approval.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "actionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "actionId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ],
+  "codexCalls": [
+    {
+      "tool": "read_outstanding",
+      "arguments": {},
+      "output": {
+        "orderCount": 8,
+        "amountMinor": 3410000,
+        "currency": "THB"
+      }
+    },
+    {
+      "tool": "propose_payment_link",
+      "arguments": {
+        "amount": 500000,
+        "currency": "THB",
+        "customer": "Demo Studio",
+        "description": "Website design",
+        "methods": [
+          "QR"
+        ]
+      },
+      "output": {
+        "actionId": "cmww23k5w0001e9z9fidfl8bp",
+        "status": "PROPOSED",
+        "amountMinor": 500000,
+        "preview": {
+          "amount": 500000,
+          "currency": "THB",
+          "customer": "Demo Studio",
+          "description": "Website design",
+          "methods": [
+            "QR"
+          ],
+          "expires": "2026-11-26T11:44:47.827Z"
+        },
+        "reviewUrl": "http://127.0.0.1:43791/assistant?run=cmww23k5p0000e9z90r0y3qnf",
+        "checkoutUrl": null
+      }
+    },
+    {
+      "tool": "read_action",
+      "arguments": {
+        "actionId": "cmww23k5w0001e9z9fidfl8bp"
+      },
+      "output": {
+        "actionId": "cmww23k5w0001e9z9fidfl8bp",
+        "status": "EXECUTED",
+        "amountMinor": 500000,
+        "preview": {
+          "amount": 500000,
+          "currency": "THB",
+          "customer": "Demo Studio",
+          "description": "Website design",
+          "methods": [
+            "QR"
+          ],
+          "expires": "2026-11-26T11:44:47.827Z"
+        },
+        "reviewUrl": "http://127.0.0.1:43791/assistant?run=cmww23k5p0000e9z90r0y3qnf",
+        "checkoutUrl": "http://127.0.0.1:43791/pay/a97b4da5-5902-4ef0-bca4-07f62695564a"
+      }
+    }
+  ],
+  "sdkNegativeResults": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "MCP error -32602: Input validation error: Invalid arguments for tool propose_payment_link: Too small: expected number to be >=1 at amount"
+        }
+      ],
+      "isError": true
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "MCP error -32602: Input validation error: Invalid arguments for tool read_outstanding: Unrecognized key: \"merchant\""
+        }
+      ],
+      "isError": true
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "Merchant HTTP 404: NOT_FOUND \u00b7 Record unavailable"
+        }
+      ],
+      "isError": true
+    }
+  ]
+}

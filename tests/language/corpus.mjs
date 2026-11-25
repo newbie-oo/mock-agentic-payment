@@ -89,7 +89,11 @@ export const tuning = [
   [
     "draft",
     "ดูยอดก่อน ถ้ายังไม่จ่ายช่วยเตรียมข้อความ แต่ยังไม่ส่ง",
-    { tool: "get_dashboard_metrics", also: "draft_payment_reminder" },
+    {
+      tool: "get_dashboard_metrics",
+      status: "NEEDS_INPUT",
+      words: ["ลูกค้า", "ออเดอร์"],
+    },
   ],
 ];
 export const holdout = [
@@ -139,5 +143,163 @@ export const holdout = [
       name: "สมชาย",
       expiry: "2026-11-25T05:00:00.000Z",
     },
+  ],
+];
+
+// Previously reported failures, scored separately from fresh paraphrases.
+export const corrections = [
+  [
+    "hold",
+    "ค่าสกรีนเสื้อ 870 บาทนะ แต่อย่าเพิ่งออกลิงก์ เดี๋ยวลูกค้าเปลี่ยนไซซ์",
+    { words: ["ยังไม่ได้เตรียม"] },
+  ],
+  [
+    "alternatives",
+    "ช่วยออกลิงก์ค่าขนมให้หน่อย 420 หรือ 480 บาทนี่แหละ จำยอดสุทธิไม่ได้",
+    { status: "NEEDS_INPUT", words: ["ยอดสุทธิ"], absent: ["ยอด 480"] },
+  ],
+  [
+    "instructions",
+    "ถ้าร้านจะเก็บค่าห่อของ 95 บาทผ่านลิงก์ ต้องทำยังไงบ้าง ขอรู้ขั้นตอนเฉย ๆ",
+    { words: ["Payment Links", "Approve"] },
+  ],
+  [
+    "mixed-name",
+    "รบกวนทำ payment link ให้ June สำหรับค่า mug ลายแมว 735 บาททีจ้า",
+    { amount: 73500, name: "June", description: "ค่า mug ลายแมว" },
+  ],
+  [
+    "time-not-price",
+    "ช่วยออกลิงก์ค่าเสื้อให้พี่อ้อที นัดรับตอน 18:45 น. ส่วนราคายังไม่ได้คุย",
+    {
+      status: "NEEDS_INPUT",
+      words: ["ยอด"],
+      absent: ["ชื่อลูกค้า", "รายละเอียด", "ยอด 18"],
+    },
+  ],
+  [
+    "supply-price",
+    "340 บาท",
+    { continue: true, amount: 34000, name: "อ้อ", description: "ค่าเสื้อ" },
+  ],
+  [
+    "buyer-checkout",
+    "เราเป็นคนซื้อจ้า ร้านส่งลิงก์ค่าเทียน 360 บาทมาให้ ต้องกดตรงไหนถึงจะจ่ายได้",
+    { words: ["เปิดลิงก์", "ตรวจชื่อร้าน"] },
+  ],
+  ["house-base", "ต้องการซื้อบ้าน ภายใน 2 ชม ราคา 5000", { status: "NEEDS_INPUT" }],
+  [
+    "house-correct",
+    "รับเงินมัดจำจากลูกค้าชื่อวิชัย แต่เก็บมัดจำแค่ 500 บาท",
+    {
+      continue: true,
+      amount: 50000,
+      name: "วิชัย",
+      methods: ["QR"],
+      expiry: "2026-11-25T05:00:00.000Z",
+    },
+  ],
+  [
+    "house-deny",
+    "ไม่เอา QR",
+    { continue: true, retire: true, status: "NEEDS_INPUT", words: ["วิธีชำระ"] },
+  ],
+  [
+    "house-card",
+    "ใช้บัตร",
+    { continue: true, amount: 50000, name: "วิชัย", methods: ["CARD"] },
+  ],
+  [
+    "thai-full",
+    "สร้างลิงก์ หนึ่งพันห้าร้อยบาท ค่าออกแบบ จากคุณมาลี",
+    { amount: 150000, name: "มาลี", description: "ค่าออกแบบ" },
+  ],
+  [
+    "unknown-recipient",
+    "ช่วยเตรียมข้อความทวงลูกค้าชื่อวิชัย ยังไม่ส่ง",
+    { words: ["ไม่พบ", "วิชัย"], absent: ["นภัส", "4,700", "สวัสดี"] },
+  ],
+  [
+    "terse-fee",
+    "ลิ้ง ค่าบัตร 6000 เอ จ่าย",
+    { status: "NEEDS_INPUT", words: ["6,000", "ชื่อเอ", "ใช่ไหม"] },
+  ],
+  [
+    "terse-confirm",
+    "ใช่ ตามนี้",
+    {
+      continue: true,
+      amount: 600000,
+      name: "เอ",
+      description: "ค่าบัตร",
+      methods: ["QR"],
+    },
+  ],
+];
+export const variants = [
+  [
+    "alternatives-en",
+    "Create a payment link for flowers, 960 or 980 baht for customer Kai",
+    { status: "NEEDS_INPUT", words: ["one final amount"] },
+  ],
+  [
+    "resolve-en",
+    "THB 970",
+    { continue: true, amount: 97000, name: "Kai", description: "flowers" },
+  ],
+  [
+    "deny-en",
+    "without QR, use card",
+    {
+      continue: true,
+      retire: true,
+      amount: 97000,
+      name: "Kai",
+      methods: ["CARD"],
+    },
+  ],
+  [
+    "decline-all",
+    "no card or QR",
+    { continue: true, retire: true, status: "NEEDS_INPUT", words: ["method"] },
+  ],
+  [
+    "four-scales",
+    "สร้างลิงก์ สองหมื่นสามพัน สี่ร้อยยี่สิบเอ็ดบาท ค่าพิมพ์ จากคุณวิภา",
+    { amount: 2342100, name: "วิภา" },
+  ],
+  [
+    "malformed-spoken",
+    "สร้างลิงก์ หนึ่งจุดห้าบาท ค่ากาแฟ จากคุณนิด",
+    { status: "NEEDS_INPUT", words: ["ตัวเลข"] },
+  ],
+  [
+    "another-recipient",
+    "Draft a reminder for customer Wila, don't send it",
+    { words: ["No matching", "Wila"], absent: ["นภัส", "4,700", "สวัสดี"] },
+  ],
+  [
+    "new-instructions",
+    "How can we create a payment link for a deposit of THB 720?",
+    { words: ["Payment Links", "preview"] },
+  ],
+  [
+    "reference-not-price",
+    "ลิ้ง ค่าของ เลขอ้างอิง 6000 เอ จ่าย",
+    {
+      status: "NEEDS_INPUT",
+      words: ["ยอด"],
+      absent: ["6,000 บาท จาก", "ตอบยืนยันได้เลย"],
+    },
+  ],
+  [
+    "new-fee",
+    "ลิงค์ ค่าสมาชิก 820 ลัดดา จ่าย",
+    { status: "NEEDS_INPUT", words: ["820", "ลัดดา", "ใช่ไหม"] },
+  ],
+  [
+    "correct-fee",
+    "ใช่ แต่เก็บ 790 บาท จากคุณลัดดา จ่ายด้วยบัตร",
+    { continue: true, amount: 79000, name: "ลัดดา", methods: ["CARD"] },
   ],
 ];

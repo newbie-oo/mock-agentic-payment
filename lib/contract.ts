@@ -2,6 +2,8 @@ import type { AgentAction, AgentRun } from "@prisma/client";
 export function actionDTO(action: AgentAction) {
   const payload = JSON.parse(action.payload) as {
     summary?: string;
+    priorMessage?: string;
+    priorReply?: string;
     amount?: number;
     customer?: string;
     description?: string;

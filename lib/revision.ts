@@ -1,88 +1,113 @@
+import { createHash } from "node:crypto";
+import type { Prisma } from "@prisma/client";
+import { runRecord } from "./service";
 import { db, merchant } from "./db";
-import { satang } from "./money";
-import { event } from "./service";
-export function editRequest(text: string) {
-  const cancel = /^(?:ไม่เอาแล้ว|ยกเลิก|cancel\b|never mind)/i.test(text.trim());
-  const revision = text.match(
-    /^(?:เปลี่ยน(?:ยอด)?เป็น|change (?:it |the amount )?to)\s*(\d[\d,]*(?:\.\d+)?)/i,
-  );
-  return cancel
-    ? { kind: "cancel" as const }
-    : revision
-      ? {
-          kind: "revise" as const,
-          amount: satang(revision[1].replaceAll(",", "")),
-        }
-      : null;
-}
-export async function retirePreviews(
+// Claim a turn and revoke its previous preview together. If approval won the
+// race first, a follow-up cannot reopen the completed order.
+async function appendTurn(
+  tx: Prisma.TransactionClient,
   runId: string,
-  request: NonNullable<ReturnType<typeof editRequest>>,
-  text: string,
+  message: string,
+  cancel: boolean,
+) {
+  const run = await tx.agentRun.findFirstOrThrow({
+    where: { id: runId, merchant },
+  });
+  const transcript = run.prompt + "\n" + message;
+  if (transcript.length > 3500) throw Error("Follow-up too long");
+  if (run.responseStatus === "PROCESSING")
+    throw Error("Follow-up already received");
+  const pending = await tx.agentAction.findMany({
+    where: { runId, status: "PROPOSED" },
+    select: { id: true, kind: true },
+  });
+  if (run.responseStatus !== "NEEDS_INPUT" && !pending.length)
+    throw Error("Run already complete. Start a new request.");
+  if (!cancel && pending.some((a) => a.kind !== "create_payment_link"))
+    throw Error(
+      "Review the collection actions individually or start a new request.",
+    );
+  await tx.agentAction.updateMany({
+    where: { runId, status: "PROPOSED" },
+    data: {
+      status: "REJECTED",
+      result: JSON.stringify({
+        summary: cancel
+          ? "Cancelled by merchant"
+          : "Superseded by a new merchant instruction",
+      }),
+    },
+  });
+  const updated = await tx.agentRun.update({
+    where: { id: runId },
+    data: {
+      summary: "Processing",
+      responseStatus: "PROCESSING",
+      prompt: transcript,
+    },
+  });
+  await tx.agentAction.create({
+    data: {
+      runId,
+      kind: cancel ? "Cancellation" : "Follow-up",
+      status: "EVENT",
+      payload: JSON.stringify({
+        summary:
+          "Received merchant instruction; retired " +
+          pending.length +
+          " pending proposals",
+        priorMessage: run.prompt.split("\n").at(-1),
+        priorReply: run.summary.replace(/^NEED_INPUT\s*/, ""),
+      }),
+    },
+  });
+  return updated;
+}
+
+export async function claimTurn(
+  message: string,
+  mode: string,
+  cancel: boolean,
+  previousId?: string,
+  continuation?: string,
+  requestId?: string,
 ) {
   return db.$transaction(async (tx) => {
-    const run = await tx.agentRun.findFirstOrThrow({
-      where: { id: runId, merchant },
-      include: { actions: { where: { status: "PROPOSED" } } },
-    });
-    if (run.responseStatus === "PROCESSING")
-      throw Error("Run already processing. Retry after the response appears.");
-    if (
-      request.kind === "revise" &&
-      (run.actions.length !== 1 ||
-        run.actions[0].kind !== "create_payment_link")
-    )
-      throw Error("Select a run with one pending payment link to revise.");
-    const reason =
-      request.kind === "cancel"
-        ? "Cancelled by merchant"
-        : "Superseded by merchant revision";
-    const retired = await tx.agentAction.updateMany({
-      where: { runId, status: "PROPOSED" },
-      data: { status: "REJECTED", result: JSON.stringify({ summary: reason }) },
-    });
-    await event(
-      runId,
-      request.kind === "cancel" ? "Cancellation" : "Revision",
-      reason + " · " + retired.count + " pending proposals",
-      tx,
-    );
-    if (request.kind === "revise") {
-      const revised = {
-        ...JSON.parse(run.actions[0].payload),
-        amount: request.amount,
-      };
+    const id = requestId && "submission-" + requestId;
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify([merchant, message, previousId, continuation]))
+      .digest("hex");
+    if (id) {
+      const receipt = await tx.agentAction.findFirst({
+        where: { id, run: { merchant } },
+        include: { run: true },
+      });
+      if (receipt) {
+        if (JSON.parse(receipt.payload).fingerprint !== fingerprint)
+          throw Error("Request ID already used for a different submission");
+        if (receipt.run.responseStatus === "PROCESSING")
+          throw Error(
+            "Request already processing. Retry the same submission shortly.",
+          );
+        return { run: receipt.run, replay: true };
+      }
+    }
+    const run = previousId
+      ? await appendTurn(tx, previousId, message, cancel)
+      : await runRecord(message, mode, merchant, tx);
+    if (id)
       await tx.agentAction.create({
         data: {
-          runId,
-          kind: "Revised draft",
+          id,
+          runId: run.id,
+          kind: "Submission",
           status: "EVENT",
-          payload: JSON.stringify({ summary: reason, draft: revised }),
+          payload: JSON.stringify({
+            fingerprint,
+            summary: "Merchant message received",
+          }),
         },
       });
-    }
-    const thai = /[ก-๙]/.test(text);
-    const summary =
-      request.kind === "cancel"
-        ? (thai
-            ? "ยกเลิกคำขอแล้ว จำนวนข้อเสนอที่ปิด: "
-            : "Cancelled. Pending proposals closed: ") + retired.count
-        : "NEED_INPUT " +
-          (thai
-            ? "บันทึกยอดที่แก้เป็น " +
-              request.amount / 100 +
-              " บาทแล้ว ยืนยันเพื่อเตรียมข้อเสนอใหม่"
-            : "Revised amount: THB " +
-              request.amount / 100 +
-              ". Confirm to preview a new link.");
-    return tx.agentRun.update({
-      where: { id: runId },
-      data: {
-        prompt: run.prompt + "\n" + text,
-        summary,
-        responseStatus: request.kind === "revise" ? "NEEDS_INPUT" : "COMPLETE",
-      },
-      include: { actions: { orderBy: { createdAt: "asc" } } },
-    });
+    return { run, replay: false };
   });
 }

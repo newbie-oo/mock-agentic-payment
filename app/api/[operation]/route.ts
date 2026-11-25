@@ -126,10 +126,13 @@ export async function POST(req: Request, { params }: Context) {
             prompt: z.string(),
             runId: id.optional(),
             continueRunId: id.optional(),
+            requestId: z.uuid().optional(),
           })
           .strict()
           .parse(data);
-        const r = runDTO(await agent(a.prompt, a.runId, a.continueRunId));
+        const r = runDTO(
+          await agent(a.prompt, a.runId, a.continueRunId, a.requestId),
+        );
         return json(r, r.error ? 502 : a.runId ? 200 : 201);
       }
       case "checkout":

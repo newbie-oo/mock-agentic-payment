@@ -839,3 +839,80 @@ test("latest activity determines collection eligibility, distinct names and stab
   assert.equal(proposed[0].payload.evidence.outcome, "PENDING");
   assert.ok(proposed[0].payload.evidence.attemptId);
 });
+test("native fixture enforces corrected customer, satang and allowed methods before proposal", async (t) => {
+  process.env.OPENAI_API_KEY = crypto.randomUUID();
+  let scenario: "amount" | "methods" | "name" | "ok" = "amount";
+  let toolReplies = 0;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, init: { body: string }) => {
+      const req = JSON.parse(init.body);
+      if (req.messages.at(-1).role === "tool") {
+        assert.equal(req.messages.at(-1).tool_call_id, "preview");
+        toolReplies++;
+        return Response.json({
+          choices: [{ message: { content: "Review the confirmed details." } }],
+        });
+      }
+      const terms = JSON.parse(
+        req.messages[1].content.split("\nConfirmed checkout fields: ").at(-1),
+      );
+      assert.deepEqual(
+        [terms.customer, terms.amount, terms.methods],
+        ["อรุณ", 37000, ["CARD"]],
+      );
+      const changes =
+        scenario === "amount"
+          ? { amount: 480000 }
+          : scenario === "methods"
+            ? { methods: ["QR"] }
+            : scenario === "name"
+              ? { customer: "Someone else" }
+              : {};
+      return Response.json({
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  id: "preview",
+                  type: "function",
+                  function: {
+                    name: "create_payment_link",
+                    arguments: JSON.stringify({ ...terms, ...changes }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+    },
+  );
+  try {
+    const initial = await db.order.count();
+    for (const value of ["amount", "methods", "name", "ok"] as const) {
+      scenario = value;
+      const first = (
+        await api("agent", { prompt: "ต้องการซื้อบ้าน ภายใน 4 ชม ราคา 4800" })
+      ).value;
+      const next = await api("agent", {
+        runId: first.id,
+        prompt: "เก็บเงินมัดจำจากลูกค้าชื่ออรุณ แต่รับแค่ 370 บาท ไม่เอา QR ขอใช้บัตร",
+      });
+      assert.equal(next.value.mode, "Native provider");
+      assert.equal(next.code, value === "ok" ? 200 : 502);
+      assert.equal(
+        next.value.actions.filter(
+          (a: { status: string }) => a.status === "PROPOSED",
+        ).length,
+        value === "ok" ? 1 : 0,
+      );
+      assert.equal(await db.order.count(), initial);
+    }
+    assert.equal(toolReplies, 1);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});

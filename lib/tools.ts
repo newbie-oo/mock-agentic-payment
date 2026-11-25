@@ -1,6 +1,7 @@
 import { z } from "zod";
 import * as s from "./service";
 import { db } from "./db";
+import { expired } from "./expiry";
 const empty = z.object({}).strict();
 type Context = { runId: string; m: string };
 function tool<T extends z.ZodType>(
@@ -33,8 +34,12 @@ export const registry = {
   ),
   list_unpaid_payments: tool(
     "Page of 12 open orders, latest link and attempt.",
-    s.pageInput.extend({ before: s.cursorInput.optional() }),
-    (a, c) => s.orders(a.page, true, c.m, s.size, a.before),
+    s.pageInput.extend({
+      before: s.cursorInput.optional(),
+      customer: z.string().min(1).max(100).optional(),
+      orderId: z.string().min(1).max(100).optional(),
+    }),
+    (a, c) => s.orders(a.page, true, c.m, s.size, a.before, a),
   ),
   get_payment_history: tool(
     "Recent 12 attempts and 12 links for an order.",
@@ -77,6 +82,8 @@ export const registry = {
     s.linkInput,
     async (a, c) => {
       const l = await s.getLink(a.linkId, c.m);
+      if (!l.activeSlot || l.order.status !== "OPEN" || expired(l.expires))
+        throw Error("The order has no open checkout for a reminder");
       return {
         body:
           "สวัสดีค่ะ คุณ" +

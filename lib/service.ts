@@ -50,10 +50,13 @@ export function orders(
   m = scope,
   take = size,
   before?: OrderCursor,
+  recipient?: { customer?: string; orderId?: string },
 ) {
   return db.order.findMany({
     where: {
       merchant: m,
+      customer: recipient?.customer,
+      id: recipient?.orderId,
       ...(unpaid ? { status: "OPEN" } : {}),
       ...(before
         ? {
@@ -135,8 +138,13 @@ export async function metrics(m = scope) {
     trend: trend.map((p) => ({ ...p, total: Number(p.total) })),
   };
 }
-export function runRecord(prompt: string, mode: string, m = scope) {
-  return db.agentRun.create({
+export function runRecord(
+  prompt: string,
+  mode: string,
+  m = scope,
+  client: Tx = db,
+) {
+  return client.agentRun.create({
     data: {
       merchant: m,
       prompt,

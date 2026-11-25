@@ -5,7 +5,12 @@ import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { DatabaseSync } from "node:sqlite";
 import nextEnv from "@next/env";
-import { tuning, holdout } from "../tests/language/corpus.mjs";
+import {
+  tuning,
+  holdout,
+  corrections,
+  variants,
+} from "../tests/language/corpus.mjs";
 nextEnv.loadEnvConfig(process.cwd());
 const live = process.argv.includes("--live");
 if (live && !process.env.OPENAI_API_KEY?.trim())
@@ -42,7 +47,12 @@ try {
     } catch {}
     await new Promise((r) => setTimeout(r, 100));
   }
-  for (const [split, cases] of Object.entries({ tuning, holdout })) {
+  for (const [split, cases] of Object.entries({
+    tuning,
+    holdout,
+    corrections,
+    variants,
+  })) {
     const rows = [];
     let last;
     for (const [id, prompt, expect] of cases) {
@@ -68,6 +78,8 @@ try {
         amount: a.amountMinor,
         customer: a.payload.customer,
         expiry: a.payload.expires,
+        methods: a.payload.methods,
+        description: a.payload.description,
       }));
       const prior =
         previous?.actions?.filter((a) => a.status === "PROPOSED") ?? [];
@@ -91,6 +103,12 @@ try {
         retired &&
         (!expect.status || run.status === expect.status) &&
         (!expect.name || preview[0]?.customer === expect.name) &&
+        (!expect.description ||
+          preview[0]?.description === expect.description) &&
+        (!expect.methods ||
+          [...(preview[0]?.methods ?? [])].sort().join() ===
+            [...expect.methods].sort().join()) &&
+        (expect.absent ?? []).every((w) => !new RegExp(w, "i").test(reply)) &&
         (!expect.expiry || preview[0]?.expiry === expect.expiry) &&
         (!expect.tool || trace.includes(expect.tool)) &&
         (!expect.also || trace.includes(expect.also)) &&

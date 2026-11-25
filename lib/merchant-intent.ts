@@ -75,11 +75,23 @@ export const intentSchema = z.object({
     .boolean()
     .optional()
     .describe("Merchant explicitly asked to inspect balances before drafting"),
-  expiryChanged: z
-    .boolean()
+  expiryChangeQuote: z
+    .string()
+    .trim()
+    .min(1)
+    .max(150)
     .optional()
     .describe(
-      "On an edit, true only when the latest merchant message explicitly changes the expiry.",
+      "On an edit copy only the words in the NEW merchant message explicitly specifying a different expiry, otherwise omit.",
+    ),
+  purposeChangeQuote: z
+    .string()
+    .trim()
+    .min(1)
+    .max(250)
+    .optional()
+    .describe(
+      "On an edit copy only the NEW merchant wording for a different payment purpose, otherwise omit.",
     ),
   customer: z
     .string()
@@ -259,6 +271,18 @@ export function interpret(
       );
     terms.description = original;
   }
+  if (c.priorPreview) {
+    if (
+      !intent.expiryChangeQuote ||
+      !c.latest.includes(intent.expiryChangeQuote)
+    )
+      terms.expires = c.priorPreview.expires;
+    if (
+      !intent.purposeChangeQuote ||
+      !c.latest.includes(intent.purposeChangeQuote)
+    )
+      terms.description = c.priorPreview.description;
+  }
   // A revised approval preview is distinct from a correction to an unresolved
   // payer-confirmation question. Require both changed fields in the user's reply.
   if (
@@ -283,8 +307,6 @@ export function interpret(
       intent.intent = "create";
   }
   if (intent.deferPreview) intent.intent = "confirm";
-  if (c.priorPreview && !intent.expiryChanged)
-    terms.expires = c.priorPreview.expires;
   terms.expires = new Date(
     terms.expires ?? +c.started + 86400000,
   ).toISOString();

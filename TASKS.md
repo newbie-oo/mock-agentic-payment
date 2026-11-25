@@ -29,3 +29,7 @@ Phase 5 built all seven App Router surfaces successfully after aligning npm modu
 | Unverified | Human presentation time | Timed browser automation and a three-minute narration outline were delivered. No human interview was timed. |
 
 The coordinator owns [HTTP contract and parity](https://github.com/newbie-oo/mock-agentic-payment/issues/8). Original plans are retained above. All six phases have implementation and local verification evidence.
+
+## Assistant follow-up and independent remediation
+
+Passed keyboard and submit-button reproduction on an isolated production server; implemented focused results and in-run buying-versus-collection clarification. The fixed-clock corpus improved from 6/22 to 22/22 tuning and 2/9 to 9/9 holdout in deterministic mode. The native protocol fixture was exercised independently. Live model quality remains unverified because no key was configured. All seven numbered review findings, query adjustments and reproducible checks are recorded in the [assistant review](evidence/assistant-review.md).

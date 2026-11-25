@@ -32,7 +32,7 @@ Try a QR deadline with **สร้างลิงก์เก็บเงิน�
 
 Leave OPENAI_API_KEY blank for the explicitly labelled deterministic demo. Set it in the local environment for native Chat Completions. The default OPENAI_BASE_URL is http://127.0.0.1:8317/v1 and OPENAI_MODEL is gpt-5.6-terra. Restart Next after changing configuration. `npm run provider` requires the configured key and verifies an actual dashboard tool call and follow-up reply. Provider errors are persisted on the native run.
 
-The app runs a single agent with 11 Zod-validated tools. Reads are scoped to the server-selected merchant. The native adapter limits calls to 32, provider turns to 14, elapsed provider time to 60 seconds, request context to 110,000 characters and each provider response to 64 KB. Reasoning fields and provider headers are excluded from persisted activity. The deterministic collection workflow reviews up to 60 orders and reports coverage.
+The app runs a single agent with 11 Zod-validated tools. Reads are scoped to the server-selected merchant. The native adapter limits calls to 32, provider turns to 14, the run deadline to 60 seconds from its first native request (including clarification time), request context to 110,000 characters and each provider response to 64 KB. Reasoning fields and provider headers are excluded from persisted activity. The deterministic collection workflow reviews 60 orders per batch and offers Review next orders while more remain.
 
 ## Merchant HTTP API
 
@@ -45,7 +45,7 @@ All amounts in the JSON contract are integer satang. Link IDs are public sandbox
 | GET | /api/links?page=1 | Page starting at 1 | Orders with current checkout and latest attempt · 200 |
 | GET | /api/link?id=… | Checkout ID | Link and order · 200 or 404 |
 | POST | /api/proposal | kind and args | Manual create or replacement preview · 201 |
-| POST | /api/agent | prompt, optional runId for clarification | Run and action DTOs · 201 new, 200 follow-up, 502 failed provider |
+| POST | /api/agent | prompt, optional runId for clarification/revision or continueRunId for the next deterministic collection batch | Run and action DTOs · 201 new, 200 follow-up, 502 failed provider |
 | GET | /api/run?id=… | Run ID | Same run, summary, action IDs and timeline as /assistant?run=… · 200 or 404 |
 | POST | /api/decision | actionId and boolean approve | Stored action and verified checkoutUrl, if applicable · 200 or 409 stale |
 | POST | /api/decisions | runId and boolean approve | Run and terminal outcome per action, including stale and failed · 200 |
@@ -84,7 +84,7 @@ jq -nc --arg run "$run_id" --arg action "$action_id" --arg link "$link_id" --arg
 
 The App Router server pages and route handlers call the same services. Prisma stores one balance per order, a history of checkout links, and attempt outcomes. An active-slot uniqueness constraint protects replacement. Conditional order settlement and a unique settlement field protect revenue. Approval rechecks eligibility and stores the readback in the same transaction. Merchant and status indexes support pagination and aggregates. Dates are UTC instants, rendered in Asia/Bangkok. Success rate includes all recorded attempts in its denominator.
 
-One fixed demo merchant, synthetic customers, and sandbox QR/card outcomes. Outstanding customers are counted by distinct seeded customer name. Repeated names retain separate order balances. Notifications stay in SQLite. Native provider support depends on the local endpoint implementing Chat Completions tool calls. The demo parser handles the documented Thai and English patterns. Plans, decisions and test evidence are in [PLAN.md](PLAN.md), [collection decisions](decisions/collection.md) and [TASKS.md](TASKS.md).
+One fixed demo merchant, synthetic customers, and sandbox QR/card outcomes. The customer-name count reflects distinct display names. Repeated names retain separate order balances. Notifications stay in SQLite. Native provider support depends on the local endpoint implementing Chat Completions tool calls. The demo parser handles the documented Thai and English patterns. Plans, decisions and test evidence are in [PLAN.md](PLAN.md), [collection decisions](decisions/collection.md) and [TASKS.md](TASKS.md).
 
 Public product inspiration includes shareable payment links, QR and card methods, and merchant reporting. PayPilot is independent. The API overview rendered as a JavaScript shell during research. [PaySo public capabilities](https://payso.co/th) · [API overview](https://api-docs.payso.co/docs/api/overviews).
 
@@ -111,3 +111,7 @@ The curl block above produced this response on an isolated fresh seed. All ident
 ```
 
 SQLite independently reported 17 paid orders and 3,960,000 satang after replay. The fresh seed had 16 and 3,460,000 respectively.
+
+## Assistant input and review
+
+Enter submits the composer. Shift+Enter adds a line. Reply within the same run to supply missing information, revise a pending amount or cancel a preview. The local server distinguishes purchasing from collecting a payment before offering a merchant action. Read the [language evaluation and review evidence](evidence/assistant-review.md) for before/after results and optional live evaluation commands.

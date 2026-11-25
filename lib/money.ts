@@ -38,9 +38,9 @@ export function explicitSum(text: string): number | undefined {
 export function validateQuotedMoney(text: string) {
   const currency =
     /(?:\bTHB\s*|฿\s*)(-?\d+(?:,\d{3})*(?:\.\d+)?)|(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:บาท|\bbaht\b|\bTHB\b)/gi;
-  for (const match of text.matchAll(currency)) {
-    satang((match[1] ?? match[2]).replaceAll(",", ""));
-  }
+  return Array.from(text.matchAll(currency), (match) =>
+    satang((match[1] ?? match[2]).replaceAll(",", "")),
+  );
 }
 
 // A number explicitly labelled as a reference or contact is not a quoted price.

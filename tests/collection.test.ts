@@ -611,8 +611,15 @@ test("buyer clarification persists price and deadline without proposing or payin
   assert.ok(
     !nameOnly.actions.some((a: { status: string }) => a.status === "PROPOSED"),
   );
-  const confirmed = (
+  const deposit = (
     await api("agent", { runId: first.runId, prompt: "ใช่ เก็บค่าจองจากสมชาย" })
+  ).value;
+  assert.equal(deposit.status, "NEEDS_INPUT");
+  assert.ok(
+    !deposit.actions.some((a: { status: string }) => a.status === "PROPOSED"),
+  );
+  const confirmed = (
+    await api("agent", { runId: first.runId, prompt: "เก็บค่าจอง 5,000 บาท" })
   ).value;
   assert.equal(confirmed.runId, first.runId);
   const preview = confirmed.actions.find(
@@ -1369,4 +1376,184 @@ test("held recap uses grounded terms, leaves the thread open, and keeps guides a
       .code,
     409,
   );
+});
+
+test("native HTTP resolves missing terms, expiry edits, method selection and affirmative fee correction without ledger writes", async (t) => {
+  const now = Date.now();
+  const expiry = new Date(now + 86400000).toISOString();
+  const twoHours = new Date(now + 7200000).toISOString();
+  const base = {
+    amount: 50000,
+    customer: "วิชัย",
+    description: "มัดจำบ้าน",
+    currency: "THB",
+    methods: ["QR"],
+    expires: expiry,
+  };
+  const fee = {
+    ...base,
+    customer: "ลัดดา",
+    description: "ค่าสมาชิก",
+    amount: 82000,
+  };
+  let classification: ReturnType<typeof intentResponse> | undefined;
+  const stage = (intent: string, fields: Record<string, unknown> = {}) => {
+    classification = intentResponse(intent, fields);
+  };
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_: unknown, init: { body: string }) => {
+      const req = JSON.parse(init.body);
+      if (req.tool_choice?.function?.name === "interpret_merchant_request")
+        return Response.json(classification);
+      if (req.tool_choice?.function?.name === "create_payment_link")
+        return Response.json({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: crypto.randomUUID(),
+                    type: "function",
+                    function: { name: "create_payment_link", arguments: "{}" },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      return Response.json({
+        choices: [
+          { message: { content: "Review the proposal before approval." } },
+        ],
+      });
+    },
+  );
+  process.env.OPENAI_API_KEY = crypto.randomUUID();
+  const send = (prompt: string, runId?: string) =>
+    api("agent", { prompt, runId });
+  const pending = (r: {
+    actions: { status: string; id: string; payload: typeof base }[];
+  }) => r.actions.filter((a) => a.status === "PROPOSED");
+  const counts = () =>
+    Promise.all([
+      db.order.count(),
+      db.link.count(),
+      db.attempt.count(),
+      db.notification.count(),
+    ]);
+  const before = await counts();
+  const duration = "อีก 2 ชม.นะ ไม่ใช่ 2 วัน";
+  try {
+    for (const kind of ["create", "confirm"]) {
+      stage(kind);
+      const fresh = await send(duration);
+      assert.equal(fresh.code, 201);
+      assert.equal(fresh.value.status, "NEEDS_INPUT");
+      assert.match(fresh.value.summary, /ออเดอร์หรือลิงก์/);
+      assert.equal(pending(fresh.value).length, 0);
+      const ref = await send("ลิ้ง ค่าของ เลขอ้างอิง 6000 เอ จ่าย");
+      assert.equal(ref.code, 201);
+      assert.equal(ref.value.status, "NEEDS_INPUT");
+      assert.match(ref.value.summary, /ยอดเงิน/);
+      assert.equal(pending(ref.value).length, 0);
+    }
+    stage("create", { terms: { amount: "broken" } });
+    assert.equal((await send(duration)).code, 502);
+    stage("create", { terms: base });
+    const original = (await send("รับเงิน 500 บาท จากลูกค้าชื่อวิชัย สำหรับมัดจำบ้าน"))
+      .value;
+    stage("confirm", {
+      expiryOnlyUtc: twoHours,
+      expiryChangeQuote: "อีก 2 ชม.",
+    });
+    const amended = (await send(duration, original.id)).value;
+    assert.equal(amended.status, "AWAITING_APPROVAL");
+    assert.deepEqual(pending(amended)[0].payload, {
+      ...base,
+      expires: twoHours,
+    });
+    assert.equal(
+      amended.actions.find(
+        (a: { id: string }) => a.id === pending(original)[0].id,
+      ).status,
+      "REJECTED",
+    );
+    stage("create", {
+      expiryOnlyUtc: expiry,
+      expiryChangeQuote: "in two weeks",
+    });
+    assert.equal(
+      (await send("ขอทวนรายละเอียด", original.id)).value.status,
+      "NEEDS_INPUT",
+    );
+
+    stage("purchase");
+    const home = (await send("ต้องการซื้อบ้าน ภายใน 2 ชม ราคา 5000")).value;
+    stage("create", { terms: { ...base, expires: twoHours } });
+    const deposit = (
+      await send("รับเงินมัดจำจากลูกค้าชื่อวิชัย แต่เก็บมัดจำแค่ 500 บาท", home.id)
+    ).value;
+    assert.equal(pending(deposit).length, 1);
+    stage("clarify", { message: "ต้องการใช้วิธีชำระใดแทน?" });
+    const refused = (await send("ไม่เอา QR", home.id)).value;
+    assert.equal(refused.status, "NEEDS_INPUT");
+    assert.equal(pending(refused).length, 0);
+    assert.equal(
+      refused.actions.find(
+        (a: { id: string }) => a.id === pending(deposit)[0].id,
+      ).status,
+      "REJECTED",
+    );
+    stage("confirm", { terms: { ...base, methods: ["CARD"] } });
+    const card = (await send("ใช้บัตร", home.id)).value;
+    assert.equal(card.status, "AWAITING_APPROVAL");
+    assert.deepEqual(pending(card)[0].payload, {
+      ...base,
+      methods: ["CARD"],
+      expires: twoHours,
+    });
+
+    stage("confirm", { terms: fee, payerBinding: "inferred" });
+    const ambiguous = (await send("ลิงค์ ค่าสมาชิก 820 ลัดดา จ่าย")).value;
+    assert.equal(ambiguous.nextAction, "CONFIRM_DETAILS");
+    stage("confirm", { terms: { ...fee, amount: 79000, methods: ["CARD"] } });
+    const resolved = (
+      await send("ใช่ แต่เก็บ 790 บาท จากคุณลัดดา จ่ายด้วยบัตร", ambiguous.id)
+    ).value;
+    assert.equal(resolved.status, "AWAITING_APPROVAL");
+    assert.deepEqual(pending(resolved)[0].payload, {
+      ...fee,
+      amount: 79000,
+      methods: ["CARD"],
+    });
+    stage("purchase");
+    const buying = (
+      await send("I want to buy a home within 3 hours, price 7200")
+    ).value;
+    const house = {
+      ...base,
+      customer: "Alex",
+      amount: 720000,
+      description: "Home payment",
+      expires: new Date(now + 10800000).toISOString(),
+    };
+    stage("create", { terms: house });
+    const unspecified = (
+      await send("Please collect a deposit from customer Alex", buying.id)
+    ).value;
+    assert.equal(unspecified.status, "NEEDS_INPUT");
+    assert.match(unspecified.summary, /deposit from Alex/);
+    assert.equal(pending(unspecified).length, 0);
+    const full = (
+      await send("Collect the full THB 7,200 from customer Alex", buying.id)
+    ).value;
+    assert.equal(full.status, "AWAITING_APPROVAL");
+    assert.deepEqual(pending(full)[0].payload, house);
+    assert.deepEqual(await counts(), before);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
 });

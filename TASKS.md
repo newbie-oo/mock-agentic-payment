@@ -73,3 +73,17 @@ Run `npm run build`, then `CHROME_PATH='/Applications/Google Chrome.app/Contents
 ### Offline payer field (card 5)
 
 On the production HTTP endpoint the deterministic adapter recorded `แพร รับ` and `บริษัท ดอกแก้ว รับเฉพาะ`. The customer-field boundary now recognizes a payment acceptance clause before a named method. Repeating both HTTP requests returned `แพร` (72,500 satang) and `บริษัท ดอกแก้ว` (81,000 satang). The test `offline HTTP excludes a payment-method clause from personal and multiword company names across edits` also changes each preview from QR to CARD and checks that the full payer name and amount survive.
+
+### Smart Link follow-up contracts (card 5)
+
+| Check | Observed result |
+|---|---|
+| Time without a checkout | QA run `cmwvjco00000w30z91igaena8` returned 502, one provider call, one error and zero business changes on 10c311d. The exported record lacks raw arguments. The sole error site implies parsed create or confirm with absent terms. Native HTTP fixtures exercise both possibilities, return NEEDS_INPUT and ask which order or link the two hours apply to. Malformed terms still return 502. |
+| Expiry-only change | With a stored preview and an expiry quoted from the current message, the HTTP fixture preserves customer, purpose, satang and methods, changes the expiry to two hours and withdraws the original action. An unsupported quote prompts clarification. |
+| Reference without price | Both empty-terms fixture classifications return NEEDS_INPUT and ask for the amount on `ลิ้ง ค่าของ เลขอ้างอิง 6000 เอ จ่าย`. No preview uses the reference as a price. |
+| Method as last missing field | In a four-turn native HTTP fixture, refusing QR retires the old preview. Explicitly selecting CARD returns one preview for วิชัย, ฿500 and the original expiry. |
+| Affirmative fee correction | After the tentative ฿820 membership fee, the merchant explicitly confirms the payer, ฿790 and CARD. The fixture stages one preview for ลัดดา at 79,000 satang. The conflicting-payer regression still asks for confirmation. |
+| Purchase price and deposit | The previous English corpus expected a ฿7,200 deposit based only on the home price. QA correctly asked how much to collect. The updated English and Thai corpus expects clarification and separately tests an explicit amount. The native fixture with an unsafe ฿7,200 guess returns NEEDS_INPUT, then stages 720,000 satang only on the explicit full-price instruction. |
+| Live evidence | Independent QA ran the held recap, same-run Chrome continuation, approval and retry with the actual provider on 3880599. The offline payer check also passed on that revision. The historical classifications for `time-alone` and `house-card` were unavailable. The constructed provider fixtures cover their observed outcomes. Final live replay belongs to independent QA. |
+
+Run `npm run typecheck`, `npm test`, `npm run build`, `node scripts/language-eval.mjs` and `CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' npm run smoke`. The regression named `native HTTP resolves missing terms, expiry edits, method selection and affirmative fee correction without ledger writes` checks HTTP status, active and retired snapshots, same-run continuity and unchanged order, link, attempt and notification counts. The offline corpus includes 63 turns.

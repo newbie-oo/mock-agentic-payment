@@ -8,6 +8,11 @@ export const tuning = [
   [
     "deposit",
     "ใช่ เก็บค่าจองจากสมชาย",
+    { continue: true, status: "NEEDS_INPUT", words: ["ยอด|จำนวน|amount"] },
+  ],
+  [
+    "deposit-amount",
+    "เก็บค่าจอง 5,000 บาท",
     {
       continue: true,
       amount: 500000,
@@ -134,6 +139,11 @@ export const holdout = [
   [
     "home-confirm",
     "Please collect a deposit from customer Alex",
+    { continue: true, status: "NEEDS_INPUT", words: ["amount|deposit"] },
+  ],
+  [
+    "home-full-price",
+    "Collect the full THB 7,200 from customer Alex",
     {
       continue: true,
       amount: 720000,

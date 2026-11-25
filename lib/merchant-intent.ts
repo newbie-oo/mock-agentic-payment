@@ -7,9 +7,12 @@ import {
   validateQuotedMoney,
 } from "./money";
 import { priorPurpose, type ChatMessage } from "./native-history";
+import { paymentMethods } from "./payment-fields";
+import { startsAsPurchase, requestsFullPrice } from "./language";
 import {
   confirmationPrefix,
   heldPrefix,
+  methodPrefix,
   type Confirmation,
 } from "./confirmation";
 
@@ -88,6 +91,12 @@ export const intentSchema = z.object({
     .describe(
       "On an edit copy only the words in the NEW merchant message explicitly specifying a different expiry, otherwise omit.",
     ),
+  expiryOnlyUtc: z.iso
+    .datetime()
+    .optional()
+    .describe(
+      "For a duration/deadline-only instruction, return the requested UTC expiry and its expiryChangeQuote, without guessing any other checkout details. The server binds the current preview if present.",
+    ),
   purposeChangeQuote: z
     .string()
     .trim()
@@ -164,6 +173,7 @@ type Context = {
   priorTerms: Confirmation | null;
   priorPreview: Confirmation | null;
   heldTerms?: Confirmation | null;
+  methodTerms?: Confirmation | null;
 };
 export function interpret(
   args: unknown,
@@ -181,13 +191,14 @@ export function interpret(
       "Please confirm a positive THB amount within range with at most two decimals.",
     );
   const raw = (args as { intent?: string } | null)?.intent;
+  let quotedAmounts: number[] = [];
   if (
     raw === "create" ||
     raw === "confirm" ||
     (args as { deferPreview?: boolean } | null)?.deferPreview
   ) {
     try {
-      validateQuotedMoney(c.latest);
+      quotedAmounts = validateQuotedMoney(c.latest);
     } catch {
       return invalidAmount();
     }
@@ -221,8 +232,64 @@ export function interpret(
         : "Open Payment Links, choose Create, then enter the customer, purpose, THB amount, payment methods and expiry. Review the preview and approve it to receive a checkout URL you can copy.",
     );
   }
+  const requestTarget = () =>
+    ask(
+      `“${c.latest}” ต้องการใช้กับออเดอร์หรือลิงก์ใด? หากเป็นรายการใหม่ โปรดระบุรายละเอียดที่ต้องการรับเงิน`,
+      `Which order or checkout link should “${c.latest}” apply to? For a new checkout, please provide the payment details.`,
+    );
+  if (intent.expiryOnlyUtc && ["create", "confirm"].includes(intent.intent)) {
+    const previous = c.priorPreview ?? c.priorTerms;
+    if (!previous) return requestTarget();
+    if (
+      !intent.expiryChangeQuote ||
+      !c.latest.includes(intent.expiryChangeQuote)
+    )
+      return ask(
+        "ต้องการให้ลิงก์นี้หมดอายุเมื่อใด?",
+        "When should this checkout expire?",
+      );
+    intent.terms = { ...previous, expires: intent.expiryOnlyUtc };
+    intent.intent =
+      c.priorTerms || intent.deferPreview || c.heldTerms ? "confirm" : "create";
+  }
   const resumeQuote =
     intent.requestQuote && c.latest.includes(intent.requestQuote);
+  if (
+    !intent.deferPreview &&
+    ["clarify", "confirm", "create"].includes(intent.intent)
+  ) {
+    if (c.priorPreview && !c.heldTerms) {
+      const allowed = paymentMethods(c.latest, {
+        selected: c.priorPreview.methods,
+        denied: [],
+      });
+      if (!allowed.selected.length && allowed.denied.length)
+        return answer(
+          { intent: "clarify" },
+          methodPrefix + JSON.stringify(c.priorPreview),
+        );
+    }
+    if (c.methodTerms && ["confirm", "create"].includes(intent.intent)) {
+      const selected = paymentMethods(c.latest, {
+        selected: [],
+        denied: [],
+      }).selected;
+      const prior = c.methodTerms;
+      const expected = { ...prior, methods: selected };
+      if (
+        !selected.length ||
+        !intent.terms ||
+        !sameTerms({ ...intent.terms, expires: prior.expires }, expected) ||
+        intent.expiryChangeQuote
+      )
+        return answer(
+          { intent: "clarify" },
+          methodPrefix + JSON.stringify(prior),
+        );
+      intent.terms = expected;
+      intent.intent = "create";
+    }
+  }
   const holding = Boolean(
     c.priorPreview &&
     (intent.deferPreview ||
@@ -266,13 +333,37 @@ export function interpret(
     )
       intent.intent = "create";
   }
-  const terms = intent.terms;
-  if (!terms) throw Error("Provider omitted the checkout details");
   if (!c.priorPreview && referenceOnly(c.latest))
     return ask(
       "เลขอ้างอิงใช้ระบุบิล กรุณายืนยันยอดเงินที่จะรับเป็นบาท",
       "That number identifies the bill. What THB amount should I collect?",
     );
+  const terms = intent.terms;
+  if (!terms)
+    return c.priorPreview || c.priorTerms
+      ? ask(
+          "ต้องการเปลี่ยนรายละเอียดใดของรายการเดิม และให้เปลี่ยนเป็นอะไร?",
+          "Which detail of this checkout should change, and to what value?",
+        )
+      : requestTarget();
+  const firstCustomerMessage = c.history.find((m) => m.role === "user");
+  if (
+    !c.priorTerms &&
+    !c.priorPreview &&
+    !c.methodTerms &&
+    firstCustomerMessage &&
+    startsAsPurchase(String(firstCustomerMessage.content)) &&
+    ["deposit", "มัดจำ", "ค่าจอง"].some((word) =>
+      c.latest.toLowerCase().includes(word),
+    ) &&
+    !requestsFullPrice(c.latest) &&
+    !quotedAmounts.includes(terms.amount)
+  ) {
+    return ask(
+      `ต้องการรับเงินมัดจำจาก ${terms.customer} เป็นจำนวนเท่าไร?`,
+      `How much should the deposit from ${terms.customer} be?`,
+    );
+  }
   if (c.priorPreview) {
     const added = terms.methods.filter(
       (method) => !c.priorPreview!.methods.includes(method),
@@ -324,16 +415,10 @@ export function interpret(
         "ต้องการให้ระบุชื่อลูกค้าคนใดในรายการที่พักไว้?",
         "Which customer should appear in the held details?",
       );
-    const quoted = Array.from(
-      c.latest.matchAll(
-        /(?:฿|\bTHB)\s*([\d,]+(?:\.\d+)?)|([\d,]+(?:\.\d+)?)\s*(?:บาท|baht\b)/gi,
-      ),
-      (m) => m[1] ?? m[2],
-    );
     if (
-      quoted.length === 1 &&
+      quotedAmounts.length === 1 &&
       !/[+%]/.test(c.latest) &&
-      terms.amount !== satang(quoted[0].replaceAll(",", ""))
+      terms.amount !== quotedAmounts[0]
     )
       return ask(
         "กรุณายืนยันยอดเงินที่ต้องการทวนเป็นบาท",
@@ -373,6 +458,30 @@ export function interpret(
       "The proposed expiry has passed. What expiry should I use?",
     );
   if (holding) return answer(intent, heldPrefix + JSON.stringify(terms));
+  // An affirmative correction can resolve the payer question and also amend the fee.
+  // A conflicting or ungrounded payer still requires the confirmation below.
+  if (
+    c.priorTerms &&
+    !intent.deferPreview &&
+    terms.customer === c.priorTerms.customer &&
+    c.latest.includes(terms.customer) &&
+    terms.description === c.priorTerms.description &&
+    (c.latest.startsWith("ใช่ ") || c.latest.toLowerCase().startsWith("yes,")) &&
+    quotedAmounts.length === 1 &&
+    quotedAmounts[0] === terms.amount &&
+    (!c.priorTerms.expires || Date.parse(c.priorTerms.expires) > Date.now()) &&
+    paymentMethods(c.latest, { selected: [], denied: [] })
+      .selected.sort()
+      .join() === [...terms.methods].sort().join()
+  ) {
+    intent.intent = "create";
+    if (
+      !intent.expiryChangeQuote ||
+      !c.latest.includes(intent.expiryChangeQuote)
+    )
+      terms.expires = c.priorTerms.expires ?? terms.expires;
+    return { intent };
+  }
   if (
     intent.intent === "confirm" ||
     (c.priorTerms && !sameTerms(terms, c.priorTerms))

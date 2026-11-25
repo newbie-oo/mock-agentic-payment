@@ -6,7 +6,12 @@ import {
   paymentMethods,
   type MethodState,
 } from "./payment-fields";
-import { isThai } from "./language";
+import {
+  isThai,
+  startsAsPurchase,
+  requestsFullPrice,
+  collect,
+} from "./language";
 import { satang } from "./money";
 import { confirmationPrefix } from "./confirmation";
 
@@ -17,8 +22,6 @@ export type PaymentTerms = {
   methods: string[];
   expires: string;
 };
-const purchase = /(?:ต้องการ|อยาก|จะ)ซื้อ|\b(?:buy(?:ing)?|purchas(?:e|ing))\b/i;
-const collect = /(?:รับ|เก็บ)(?:เงิน|ค่า|มัดจำ|ชำระ)|\bcollect\b/i;
 const create = /ลิงก์|เก็บ|รับชำระ|มัดจำ|payment link|\bcollect\b|invoice/i;
 interface Draft {
   amount?: number;
@@ -37,7 +40,7 @@ export function resolveDraft(
   const turns = transcript.split("\n"),
     first = turns[0],
     thai = isThai(first),
-    home = purchase.test(first) && !collect.test(first),
+    home = startsAsPurchase(first),
     unclearPayer = !collect.test(first) && /(?:^|\s)จ่าย(?:\s|$)/.test(first);
   if (!home && !create.test(first)) return;
   // An unlabelled number following a fee and a possible payer stays
@@ -50,6 +53,7 @@ export function resolveDraft(
   const candidate =
     shorthand && !/เลข|อ้างอิง|รหัส|โทร/.test(shorthand[1]) ? shorthand : null;
   let merchantIntent = !home && !unclearPayer;
+  let purchasePrice: number | undefined;
   const d: Draft = { methods: { selected: [], denied: [] } };
   if (candidate) {
     d.customer = candidate[3];
@@ -75,6 +79,7 @@ export function resolveDraft(
     if (amount) {
       d.amount = "amount" in amount ? amount.amount : undefined;
       d.moneyQuestion = "question" in amount ? amount.question : undefined;
+      if (home && i === 0) purchasePrice = d.amount;
     }
     const name = t.match(/ให้([\p{L}\p{M}]+?)จ่าย/u)?.[1] ?? customerName(t);
     if (name) d.customer = name;
@@ -89,6 +94,10 @@ export function resolveDraft(
     )
       d.customer = t;
     if (home && collect.test(t)) {
+      if (!amount) {
+        if (requestsFullPrice(t)) d.amount = purchasePrice;
+        else if (!merchantIntent) d.amount = undefined;
+      }
       merchantIntent = true;
       d.description = description(t) ?? (thai ? "เงินมัดจำ" : "Deposit");
     } else if (!home) d.description = description(t) ?? d.description;

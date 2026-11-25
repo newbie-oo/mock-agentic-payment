@@ -217,7 +217,7 @@ try {
     assert.equal(clarification.status, "NEEDS_INPUT");
     await page.getByRole("heading", { name: "ขอข้อมูลเพิ่มเติม" }).waitFor();
     assert.match(await page.locator(".summary").innerText(), /ซื้อบ้านเอง/);
-    await page.getByLabel("ตอบกลับ").fill("ใช่ เก็บค่าจองจากสมชาย");
+    await page.getByLabel("ตอบกลับ").fill("ใช่ เก็บค่าจอง 5,000 บาท จากสมชาย");
     const followResponse = page.waitForResponse((r) =>
       r.url().endsWith("/api/agent"),
     );

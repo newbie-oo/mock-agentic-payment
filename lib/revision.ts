@@ -1,4 +1,9 @@
-import { confirmation, heldPrefix, visibleSummary } from "./confirmation";
+import {
+  confirmation,
+  heldPrefix,
+  methodPrefix,
+  visibleSummary,
+} from "./confirmation";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { runRecord } from "./service";
@@ -76,6 +81,7 @@ async function appendTurn(
         priorMessage: run.prompt.split("\n").at(-1),
         priorReply: visibleSummary(run.summary, /[ก-๙]/.test(run.prompt)),
         heldTerms: confirmation(run.summary, heldPrefix),
+        methodTerms: confirmation(run.summary, methodPrefix),
         confirmation: terms,
         priorPreview:
           pending.length === 1 && pending[0].kind === "create_payment_link"

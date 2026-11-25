@@ -29,11 +29,13 @@ export async function nativeHistory(runId: string, prompt: string) {
     previous++;
   }
   const follow = rows.filter((r) => r.kind === "Follow-up").at(-1);
+  const state = follow ? JSON.parse(follow.payload) : {};
   return {
     history,
-    priorPreview: follow ? JSON.parse(follow.payload).priorPreview : null,
-    heldTerms: follow ? JSON.parse(follow.payload).heldTerms : null,
-    priorTerms: follow ? JSON.parse(follow.payload).confirmation : null,
+    priorPreview: state.priorPreview ?? null,
+    heldTerms: state.heldTerms ?? null,
+    methodTerms: state.methodTerms ?? null,
+    priorTerms: state.confirmation ?? null,
     turn: prompt.split("\n").length - 1,
   };
 }

@@ -1,4 +1,12 @@
 export const isThai = (text: string) => /[ก-๙]/.test(text);
+const purchase = /(?:ต้องการ|อยาก|จะ)ซื้อ|\b(?:buy(?:ing)?|purchas(?:e|ing))\b/i;
+export const collect = /(?:รับ|เก็บ)(?:เงิน|ค่า|มัดจำ|ชำระ)|\bcollect\b/i;
+export const startsAsPurchase = (text: string) =>
+  purchase.test(text) && !collect.test(text);
+export const requestsFullPrice = (text: string) =>
+  ["เต็มจำนวน", "ราคาเต็ม", "full amount", "full price"].some((phrase) =>
+    text.toLowerCase().includes(phrase),
+  );
 export function normalize(text: string) {
   return text
     .replace(/[๐-๙]/g, (d) => String(d.charCodeAt(0) - "๐".charCodeAt(0)))

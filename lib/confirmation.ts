@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createInput } from "./proposal-input";
 export const confirmationPrefix = "CONFIRM_INPUT ";
 export const heldPrefix = "HELD_INPUT ";
+export const methodPrefix = "METHOD_INPUT ";
 export const prepareHeld = "เตรียมข้อเสนอจากข้อมูลนี้";
 export function confirmation(summary: string, prefix = confirmationPrefix) {
   if (!summary.startsWith(prefix)) return null;
@@ -35,6 +36,10 @@ export function question(terms: Confirmation, thai: boolean) {
 }
 
 export function visibleSummary(summary: string, thai: boolean) {
+  if (summary.startsWith(methodPrefix))
+    return thai
+      ? "ต้องการใช้วิธีชำระใดแทน? ระบุวิธีที่ต้องการก่อนตรวจข้อเสนออีกครั้ง"
+      : "Which alternative payment method should the preview enable?";
   const held = confirmation(summary, heldPrefix);
   if (held) {
     const display = new Intl.NumberFormat(thai ? "th-TH" : "en-GB", {

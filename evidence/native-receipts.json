@@ -1,0 +1,798 @@
+{
+  "implementation": "10c311d4dd2f2ac15798b4e1ffb26396ae9567df",
+  "mode": "Native provider",
+  "model": "gpt-5.6-terra",
+  "deployedArithmetic": {
+    "http": 201,
+    "id": "cmww3569f0000i7z9x8p0tfrm",
+    "mode": "Native provider",
+    "status": "AWAITING_APPROVAL",
+    "turns": 3,
+    "calls": 2,
+    "action": "cmww359v00002i7z9o21afxgi",
+    "terms": {
+      "amount": 1223300,
+      "currency": "THB",
+      "customer": "A",
+      "description": "ค่า gas",
+      "methods": [
+        "QR"
+      ],
+      "expires": "2026-11-26T12:14:02.732Z"
+    },
+    "before": [
+      31,
+      36,
+      34,
+      2
+    ],
+    "after": [
+      31,
+      36,
+      34,
+      2
+    ]
+  },
+  "deployedEdit": {
+    "http": 200,
+    "run": "cmww3569f0000i7z9x8p0tfrm",
+    "mode": "Native provider",
+    "status": "AWAITING_APPROVAL",
+    "providerTurns": 6,
+    "providerCalls": 4,
+    "action": "cmww39r910002pyz9b2jhp7o5",
+    "terms": {
+      "amount": 450000,
+      "currency": "THB",
+      "customer": "บี",
+      "description": "ค่า gas",
+      "methods": [
+        "QR"
+      ],
+      "expires": "2026-11-26T12:14:02.732Z"
+    },
+    "originalExpiry": "2026-11-26T12:14:02.732Z",
+    "oldStatus": "REJECTED",
+    "before": [
+      32,
+      37,
+      34,
+      2
+    ],
+    "after": [
+      32,
+      37,
+      34,
+      2
+    ]
+  },
+  "fixedAndRealClockReleaseTrials": [
+    {
+      "clock": "fixed",
+      "trial": 1,
+      "run": "cmwvjco000000whz9pp18keru",
+      "statuses": [
+        "AWAITING_APPROVAL",
+        "AWAITING_APPROVAL",
+        "COMPLETE"
+      ],
+      "original": {
+        "amount": 1223300,
+        "currency": "THB",
+        "customer": "A",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T03:00:00.000Z"
+      },
+      "corrected": {
+        "amount": 450000,
+        "currency": "THB",
+        "customer": "บี",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T03:00:00.000Z"
+      },
+      "sameExpiry": true,
+      "supersededStatus": "REJECTED",
+      "expiry": "2026-11-26T03:00:00.000Z",
+      "amount": 450000,
+      "customer": "บี",
+      "methods": [
+        "QR"
+      ],
+      "guide": "ไปที่ Payment Links แล้วเลือกสร้างลิงก์ กรอกชื่อลูกค้า รายการ ยอดเงิน วิธีชำระและวันหมดอายุ ตรวจรายละเอียดแล้วกดอนุมัติ จึงจะได้ลิงก์สำหรับคัดลอก",
+      "old": "cmwvjco000002whz9vf701ola",
+      "new": "cmwvjco000007whz9yyddb3l0",
+      "before": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "after": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pass": true
+    },
+    {
+      "clock": "real",
+      "trial": 1,
+      "run": "cmww3i5ny0000wyz9pzacj2w6",
+      "statuses": [
+        "AWAITING_APPROVAL",
+        "AWAITING_APPROVAL",
+        "COMPLETE"
+      ],
+      "original": {
+        "amount": 1223300,
+        "currency": "THB",
+        "customer": "A",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T12:24:08.486Z"
+      },
+      "corrected": {
+        "amount": 450000,
+        "currency": "THB",
+        "customer": "บี",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T12:24:08.486Z"
+      },
+      "sameExpiry": true,
+      "supersededStatus": "REJECTED",
+      "expiry": "2026-11-26T12:24:08.486Z",
+      "amount": 450000,
+      "customer": "บี",
+      "methods": [
+        "QR"
+      ],
+      "guide": "ไปที่ Payment Links แล้วเลือกสร้างลิงก์ กรอกชื่อลูกค้า รายการ ยอดเงิน วิธีชำระและวันหมดอายุ ตรวจรายละเอียดแล้วกดอนุมัติ จึงจะได้ลิงก์สำหรับคัดลอก",
+      "old": "cmww3iaep0002wyz940y0s9mk",
+      "new": "cmww3ih310007wyz9nepzacmb",
+      "before": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "after": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pass": true
+    },
+    {
+      "clock": "real",
+      "trial": 2,
+      "run": "cmww3imz6000dwyz9a0unom2j",
+      "statuses": [
+        "AWAITING_APPROVAL",
+        "AWAITING_APPROVAL",
+        "COMPLETE"
+      ],
+      "original": {
+        "amount": 1223300,
+        "currency": "THB",
+        "customer": "A",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T12:24:30.930Z"
+      },
+      "corrected": {
+        "amount": 450000,
+        "currency": "THB",
+        "customer": "บี",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T12:24:30.930Z"
+      },
+      "sameExpiry": true,
+      "supersededStatus": "REJECTED",
+      "expiry": "2026-11-26T12:24:30.930Z",
+      "amount": 450000,
+      "customer": "บี",
+      "methods": [
+        "QR"
+      ],
+      "guide": "ไปที่ Payment Links แล้วเลือกสร้างลิงก์ กรอกชื่อลูกค้า รายการ ยอดเงิน วิธีชำระและวันหมดอายุ ตรวจรายละเอียดแล้วกดอนุมัติ จึงจะได้ลิงก์สำหรับคัดลอก",
+      "old": "cmww3irgf000fwyz96u3dnkns",
+      "new": "cmww3iy31000kwyz9dvn35bur",
+      "before": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "after": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pass": true
+    },
+    {
+      "clock": "fixed",
+      "trial": 2,
+      "run": "cmwvjco00000dwhz9o5l5bct2",
+      "statuses": [
+        "AWAITING_APPROVAL",
+        "AWAITING_APPROVAL",
+        "COMPLETE"
+      ],
+      "original": {
+        "amount": 1223300,
+        "currency": "THB",
+        "customer": "A",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T03:00:00.000Z"
+      },
+      "corrected": {
+        "amount": 450000,
+        "currency": "THB",
+        "customer": "บี",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T03:00:00.000Z"
+      },
+      "sameExpiry": true,
+      "supersededStatus": "REJECTED",
+      "expiry": "2026-11-26T03:00:00.000Z",
+      "amount": 450000,
+      "customer": "บี",
+      "methods": [
+        "QR"
+      ],
+      "guide": "ไปที่ Payment Links แล้วเลือกสร้างลิงก์ กรอกชื่อลูกค้า รายการ ยอดเงิน วิธีชำระและวันหมดอายุ ตรวจรายละเอียดแล้วกดอนุมัติ จึงจะได้ลิงก์สำหรับคัดลอก",
+      "old": "cmwvjco00000fwhz9zer977io",
+      "new": "cmwvjco00000kwhz9fetpriq7",
+      "before": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "after": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pass": true
+    },
+    {
+      "clock": "fixed",
+      "trial": 3,
+      "run": "cmwvjco00000qwhz9hta0pdxu",
+      "statuses": [
+        "AWAITING_APPROVAL",
+        "FAILED",
+        "FAILED"
+      ],
+      "original": {
+        "amount": 1223300,
+        "currency": "THB",
+        "customer": "A",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T03:00:00.000Z"
+      },
+      "sameExpiry": false,
+      "supersededStatus": "REJECTED",
+      "guide": "Provider unavailable (429)",
+      "old": "cmwvjco00000swhz90li9s0t0",
+      "before": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "after": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pass": false
+    },
+    {
+      "clock": "real",
+      "trial": 3,
+      "run": "cmww3j2yw000qwyz9ugiqflls",
+      "statuses": [
+        "AWAITING_APPROVAL",
+        "FAILED",
+        "FAILED"
+      ],
+      "original": {
+        "amount": 1223300,
+        "currency": "THB",
+        "customer": "A",
+        "description": "ค่า gas",
+        "methods": [
+          "QR"
+        ],
+        "expires": "2026-11-26T12:24:51.656Z"
+      },
+      "sameExpiry": false,
+      "supersededStatus": "REJECTED",
+      "guide": "Provider unavailable (429)",
+      "old": "cmww3j71b000swyz9wi44z5a0",
+      "before": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "after": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "pass": false
+    }
+  ],
+  "releaseNativeAcceptance": {
+    "cases": [
+      {
+        "name": "additive",
+        "passed": true,
+        "status": [
+          "AWAITING_APPROVAL"
+        ],
+        "error": null
+      },
+      {
+        "name": "gas",
+        "passed": true,
+        "status": [
+          "AWAITING_APPROVAL"
+        ],
+        "error": null
+      },
+      {
+        "name": "decimal addition",
+        "passed": true,
+        "status": [
+          "AWAITING_APPROVAL"
+        ],
+        "error": null
+      },
+      {
+        "name": "Thai baht and satang",
+        "passed": true,
+        "status": [
+          "AWAITING_APPROVAL"
+        ],
+        "error": null
+      },
+      {
+        "name": "negative method paraphrase",
+        "passed": true,
+        "status": [
+          "AWAITING_APPROVAL"
+        ],
+        "error": null
+      },
+      {
+        "name": "card only",
+        "passed": true,
+        "status": [
+          "AWAITING_APPROVAL"
+        ],
+        "error": null
+      },
+      {
+        "name": "balance and draft-only",
+        "passed": true,
+        "status": [
+          "NEEDS_INPUT"
+        ],
+        "error": null
+      },
+      {
+        "name": "corrected deposit",
+        "passed": false,
+        "status": [
+          "NEEDS_INPUT",
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "revise existing preview, preserve future expiry",
+        "passed": false,
+        "status": [
+          "AWAITING_APPROVAL",
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "corrected confirmation",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "reference cannot become price",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "deny the only method",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "buyer follow-up",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "explicit merchant",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "instructions only",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "English unseen",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "excess currency precision",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "unsure price",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "recipient mismatch",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "collection",
+        "passed": false,
+        "status": [
+          "FAILED"
+        ],
+        "error": "Provider unavailable (429)"
+      },
+      {
+        "name": "restart, browser conflict resolution",
+        "passed": false,
+        "status": [],
+        "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'FAILED'\n- 'AWAITING_APPROVAL'\n"
+      },
+      {
+        "name": "Chrome corrected payer, amount and consent",
+        "passed": false,
+        "status": [],
+        "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'FAILED'\n- 'NEEDS_INPUT'\n"
+      }
+    ],
+    "ledgerBefore": [
+      24,
+      24,
+      25,
+      0
+    ],
+    "ledgerBeforeApprovals": [
+      24,
+      24,
+      25,
+      0
+    ],
+    "ledgerAfterApprovals": [
+      30,
+      30,
+      25,
+      0
+    ],
+    "receipts": [
+      {
+        "action": "cmwvjco000005s5z93167ff6m",
+        "checkout": "/pay/4c99053a-3daa-4572-ad17-116f3cbe8275",
+        "amount": 1223300,
+        "customer": "A",
+        "methods": "QR"
+      },
+      {
+        "action": "cmwvjco000007s5z9s795t9nx",
+        "checkout": "/pay/943a3b5d-d2ce-4563-ab79-1fc6b0bf3689",
+        "amount": 100000,
+        "customer": "A",
+        "methods": "QR"
+      },
+      {
+        "action": "cmwvjco00000as5z9fbquhyub",
+        "checkout": "/pay/cc3055de-e89e-4c35-b775-835e4259cbf7",
+        "amount": 8701,
+        "customer": "Rin",
+        "methods": "QR"
+      },
+      {
+        "action": "cmwvjco00000ks5z92ku04c1c",
+        "checkout": "/pay/2ecb1864-2abf-4d20-9e6e-970352e90661",
+        "amount": 90050,
+        "customer": "บัว",
+        "methods": "QR"
+      },
+      {
+        "action": "cmwvjco00000ms5z9kb9nxsxe",
+        "checkout": "/pay/d0059c70-2cb4-4827-ad77-558f53177ae6",
+        "amount": 72500,
+        "customer": "แพร",
+        "methods": "CARD"
+      },
+      {
+        "action": "cmwvjco00000ps5z99vuzarru",
+        "checkout": "/pay/468e69b6-f34c-4329-a902-552a976bdb89",
+        "amount": 65000,
+        "customer": "บัว",
+        "methods": "CARD"
+      }
+    ]
+  },
+  "releaseCorpus": {
+    "tuning": {
+      "turns": 22,
+      "strictPassed": 5,
+      "contractPassed": 7,
+      "noReply": 0,
+      "unrequestedPreviews": 0,
+      "unsafeAmounts": 0,
+      "businessDelta": 0,
+      "HTTP429": 12,
+      "non2xx": 14
+    },
+    "holdout": {
+      "turns": 9,
+      "strictPassed": 4,
+      "contractPassed": 4,
+      "noReply": 0,
+      "unrequestedPreviews": 0,
+      "unsafeAmounts": 0,
+      "businessDelta": 0,
+      "HTTP429": 3,
+      "non2xx": 5
+    },
+    "corrections": {
+      "turns": 15,
+      "strictPassed": 3,
+      "contractPassed": 7,
+      "noReply": 0,
+      "unrequestedPreviews": 0,
+      "unsafeAmounts": 0,
+      "businessDelta": 0,
+      "HTTP429": 5,
+      "non2xx": 7
+    },
+    "variants": {
+      "turns": 15,
+      "strictPassed": 2,
+      "contractPassed": 5,
+      "noReply": 0,
+      "unrequestedPreviews": 0,
+      "unsafeAmounts": 0,
+      "businessDelta": 0,
+      "HTTP429": 7,
+      "non2xx": 9
+    }
+  },
+  "previousRevision": "0bbb9f4a851496caa803b8f1c482c275225de792",
+  "previousCorpus": {
+    "tuning": {
+      "turns": 22,
+      "strictPassed": 17,
+      "contractPassed": 20,
+      "noReply": 0,
+      "unrequestedPreviews": 0,
+      "unsafeAmounts": 0,
+      "businessDelta": 0,
+      "HTTP429": 0,
+      "non2xx": 1
+    },
+    "holdout": {
+      "turns": 9,
+      "strictPassed": 6,
+      "contractPassed": 7,
+      "noReply": 0,
+      "unrequestedPreviews": 0,
+      "unsafeAmounts": 0,
+      "businessDelta": 0,
+      "HTTP429": 0,
+      "non2xx": 0
+    },
+    "corrections": {
+      "turns": 15,
+      "strictPassed": 11,
+      "contractPassed": 15,
+      "noReply": 0,
+      "unrequestedPreviews": 0,
+      "unsafeAmounts": 0,
+      "businessDelta": 0,
+      "HTTP429": 0,
+      "non2xx": 0
+    },
+    "variants": {
+      "turns": 15,
+      "strictPassed": 9,
+      "contractPassed": 11,
+      "noReply": 0,
+      "unrequestedPreviews": 0,
+      "unsafeAmounts": 0,
+      "businessDelta": 0,
+      "HTTP429": 0,
+      "non2xx": 0
+    }
+  },
+  "previousBrowsers": [
+    {
+      "run": "historical-conflict-1795609463863",
+      "action": "cmwvjco000002kaz960wsm60a",
+      "checkout": "/pay/82178697-d178-4d0a-9984-d2b61174476d",
+      "amount": 1223300,
+      "customer": "A",
+      "methods": "QR",
+      "providerTurns": 3,
+      "providerCalls": 2
+    },
+    {
+      "run": "cmwvjco000009kaz9vqgwxe9b",
+      "action": "cmwvjco00000gkaz9s6871yvs",
+      "checkout": "/pay/9bf42f51-4c75-4890-9c6d-aed3030933c3",
+      "amount": 450000,
+      "customer": "บี",
+      "methods": "QR"
+    }
+  ],
+  "previousPairedProviderRoles": [
+    {
+      "role": "system"
+    },
+    {
+      "role": "user"
+    },
+    {
+      "role": "assistant",
+      "calls": [
+        {
+          "name": "interpret_merchant_request",
+          "id": "call_7ea2dc9e0fcf43f399d5fcf947cf55b1"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "replyTo": "call_7ea2dc9e0fcf43f399d5fcf947cf55b1"
+    },
+    {
+      "role": "assistant"
+    },
+    {
+      "role": "user"
+    },
+    {
+      "role": "assistant",
+      "calls": [
+        {
+          "name": "interpret_merchant_request",
+          "id": "call_ad1e8ceecddf44a3b380470eeceddd06"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "replyTo": "call_ad1e8ceecddf44a3b380470eeceddd06"
+    },
+    {
+      "role": "assistant"
+    },
+    {
+      "role": "user"
+    },
+    {
+      "role": "assistant",
+      "calls": [
+        {
+          "name": "create_payment_link",
+          "id": "call_daa7dfdcd1cc48a2931190ad15bf0cb4"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "replyTo": "call_daa7dfdcd1cc48a2931190ad15bf0cb4"
+    }
+  ],
+  "previousRehearsal": [
+    {
+      "mode": "Native provider",
+      "voice": "Kanya",
+      "speechSeconds": [
+        16.607392,
+        18.161905,
+        19.299683,
+        15.737551,
+        16.164989
+      ],
+      "elapsedSeconds": 104,
+      "revenueDelta": 500000,
+      "reminders": 2
+    },
+    {
+      "mcp": [
+        "propose_payment_link",
+        "read_action",
+        "read_outstanding"
+      ],
+      "actionId": "cmww3ixxq00172nz9do9r73g3",
+      "checkoutUrl": "http://127.0.0.1:3591/pay/c9a8cc0b-4b61-4d30-8923-2b3efc63c106"
+    }
+  ]
+}

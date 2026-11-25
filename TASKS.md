@@ -25,14 +25,14 @@ Phase 5 built all seven App Router surfaces successfully after aligning npm modu
 | Passed | API and cross-channel | “empty merchant aggregates, HTTP follow-up, rejected replay and provider HTTP failure”; production browser smoke created a proposal via API, approved in UI, compared URL with HTTP GET, retried and settled. Browser run cmww00cq6000u54z9qsyfrnuo, action cmww00cqa000v54z9rceysayk, checkout /pay/e5a77c0c-d15a-4467-9869-d2c691440156. Timed automated creation through paid dashboard took 0.35 seconds on a warmed local production server. Interview narration uses the separate three-minute script. |
 | Passed | UI and interview | Desktop collection, two saved reminders, replacement checkout, mobile overview width at 390px, receipt reload and revenue ฿34,600 → ฿39,600. Full README curl block also ran on a separate fresh seed; IDs and DB count appear in README. |
 | Passed | Toolchain | npm ci, Prisma generate, npm run typecheck, npm test (12 tests), npm run build, npm run smoke and npm audit (zero known vulnerabilities at verification). |
-| Unverified | Live local provider | No OPENAI_API_KEY was configured for this worker. Local /v1/models returned 401 without credentials. Native HTTP fixture results above are separate from live verification. Run npm run provider with a configured server-side key. |
+| Passed later | Live local provider | The initial check had no key. After the owner configured the local endpoint, npm run provider verified a real dashboard tool call and final answer. The native acceptance report records payment and collection calls. |
 | Unverified | Human presentation time | Timed browser automation and a three-minute narration outline were delivered. No human interview was timed. |
 
 The coordinator owns [HTTP contract and parity](https://github.com/newbie-oo/mock-agentic-payment/issues/8). Original plans are retained above. All six phases have implementation and local verification evidence.
 
 ## Assistant follow-up and independent remediation
 
-Passed keyboard and submit-button reproduction on an isolated production server; implemented focused results and in-run buying-versus-collection clarification. The fixed-clock corpus improved from 6/22 to 22/22 tuning and 2/9 to 9/9 holdout in deterministic mode. The native protocol fixture was exercised independently. Live model quality remains unverified because no key was configured. All seven numbered review findings, query adjustments and reproducible checks are recorded in the [assistant review](evidence/assistant-review.md).
+Passed keyboard and submit-button reproduction on an isolated production server; implemented focused results and in-run buying-versus-collection clarification. The fixed-clock corpus improved from 6/22 to 22/22 tuning and 2/9 to 9/9 holdout in deterministic mode. The native protocol fixture was exercised independently. This earlier evaluation preceded the local provider configuration. Later native results are recorded below. All seven numbered review findings, query adjustments and reproducible checks are recorded in the [assistant review](evidence/assistant-review.md).
 
 ## Follow-up acceptance on cards 1–8
 
@@ -42,6 +42,22 @@ Passed keyboard and submit-button reproduction on an isolated production server;
 | Passed | 4 | Immutable build serving; Chrome direct/reload/client navigation, decoded inert QR, mixed/card-only/expired/paid/missing links, checkout replay and settlement races. |
 | Passed | 5, 6 | 61 deterministic HTTP turns; native fixture enforces corrected fields; approved deposit readback; exact recipient/order lookup with zero, one and multiple matches. |
 | Passed | 7, 8 | Desktop/mobile conversation with confirmation, approval and visible verified URL; HTTP response lost after commit, replay and conflicting request ID; browser/API/SQLite agreement for the one-message gas request. |
-| Unverified | 1, 2, 5, 7 | Human interview duration, historical pre-implementation review and live native model behavior. No authorized provider key was configured. |
+| Unverified | 1, 2, 7 | Human presentation duration and historical pre-implementation review. The timed voice-paced Chrome rehearsal appears in the native report. |
 
 The [follow-up evidence](evidence/turns-and-checkout.md) includes the exact reproduction commands, observed baseline, separate mode results, checkout incident and screenshots. The coordinator manages GitHub card status.
+
+
+## Integrated release
+
+The individual gates and remaining limitations for cards 1–9 are in [the native acceptance report](evidence/native-agent.md). PRs 10 and 11 were merged by the coordinator. The release rehearses their external stdio adapter and dashboard against the same local merchant API.
+
+
+| Status | Gate | Measured evidence |
+|---|---|---|
+| Passed | Integrated build, ledger and UI | Application 10c311d, npm ci / Prisma generate, typecheck, production build, 26 integration tests, 61 offline HTTP language turns and production Chrome smoke. |
+| Passed | Native correction and guide when provider answered | Four complete release trials across fixed and real time preserved the original expiry, staged บี/450000/QR, retired the prior action and returned a terminal guide. Ledger delta zero. |
+| Failed | Final complete native acceptance | 7/22 passed. Thirteen API scenarios encountered upstream HTTP 429, and two browser scenarios received FAILED runs. The two remaining targeted trials also received upstream 429. |
+| Passed on prior revision | Integrated native, browser and external adapter | 0bbb9f4 passed 22/22 native scenarios, 14 verified receipts and the 104-second Kanya voice-paced Chrome rehearsal with MCP readback. |
+| Unverified | Final complete native replay and human presentation | The coordinator owns the independent repeat after the provider rate limit. No human presentation time was measured. |
+
+[Sanitized receipts, commands and issue-level acceptance](evidence/native-agent.md)

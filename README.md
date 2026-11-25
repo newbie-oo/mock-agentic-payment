@@ -72,7 +72,7 @@ Try a QR deadline with **สร้างลิงก์เก็บเงิน�
 
 Leave OPENAI_API_KEY blank for the explicitly labelled deterministic demo. Set it in the local environment for native Chat Completions. The default OPENAI_BASE_URL is http://127.0.0.1:8317/v1 and OPENAI_MODEL is gpt-5.6-terra. Restart Next after changing configuration. `npm run provider` requires the configured key and verifies an actual dashboard tool call and follow-up reply. Provider errors are persisted on the native run.
 
-The app runs a single agent with 11 Zod-validated tools. Reads are scoped to the server-selected merchant. The native adapter limits calls to 32, provider turns to 14, the run deadline to 60 seconds from its first native request (including clarification time), request context to 110,000 characters and each provider response to 64 KB. Reasoning fields and provider headers are excluded from persisted activity. The deterministic collection workflow reviews 60 orders per batch and offers Review next orders while more remain.
+The native model interprets each merchant turn, then calls one or more of 11 Zod-validated business tools. The server persists the user messages, visible assistant replies and matched tool-call IDs for later turns. Numeric addition is checked in integer satang. The database enforces the approval boundary. Reads are scoped to the server-selected merchant. The native adapter limits calls to 32, provider turns to 14, active provider execution to 60 seconds across the run (waiting for a merchant reply pauses the clock), request context to 110,000 characters and each provider response to 64 KB. Reasoning fields and provider headers are excluded from persisted activity. The deterministic collection workflow reviews 60 orders per batch and offers Review next orders while more remain.
 
 ## Merchant HTTP API
 
@@ -124,7 +124,7 @@ jq -nc --arg run "$run_id" --arg action "$action_id" --arg link "$link_id" --arg
 
 The App Router server pages and route handlers call the same services. Prisma stores one balance per order, a history of checkout links, and attempt outcomes. An active-slot uniqueness constraint protects replacement. Conditional order settlement and a unique settlement field protect revenue. Approval rechecks eligibility and stores the readback in the same transaction. Merchant and status indexes support pagination and aggregates. Dates are UTC instants, rendered in Asia/Bangkok. Success rate includes all recorded attempts in its denominator.
 
-One fixed demo merchant, synthetic customers, and sandbox QR/card outcomes. The customer-name count reflects distinct display names. Repeated names retain separate order balances. Notifications stay in SQLite. Native provider support depends on the local endpoint implementing Chat Completions tool calls. The demo parser handles the documented Thai and English patterns. Plans, decisions and test evidence are in [PLAN.md](PLAN.md), [collection decisions](decisions/collection.md) and [TASKS.md](TASKS.md).
+One fixed demo merchant, synthetic customers, and sandbox QR/card outcomes. The customer-name count reflects distinct display names. Repeated names retain separate order balances. Notifications stay in SQLite. Native provider support depends on the local endpoint implementing Chat Completions tool calls. The offline adapter handles the documented Thai and English examples. It asks for decimal digits when an amount uses unsupported spoken or abbreviated notation. Plans, decisions and test evidence are in [PLAN.md](PLAN.md), [collection decisions](decisions/collection.md) and [TASKS.md](TASKS.md).
 
 Public product inspiration includes shareable payment links, QR and card methods, and merchant reporting. PayPilot is independent. The API overview rendered as a JavaScript shell during research. [PaySo public capabilities](https://payso.co/th) · [API overview](https://api-docs.payso.co/docs/api/overviews).
 
@@ -163,3 +163,19 @@ Open AI Assistant and enter **ลิ้งรับเงิน 1000 ลูก�
 The browser sends an optional UUID `requestId` with each agent turn. HTTP clients can pass the same UUID, prompt and run ID on a retry after a lost response. The server returns the existing run state. Reuse with different content returns 409. An active QR-enabled checkout displays a locally generated QR containing `PAYPILOT-SANDBOX:<link UUID>`. Choose the method and outcome and press **Simulate checkout** to record a demo attempt.
 
 For the local production demo, run `npm run build` then `npm run start -- --hostname 127.0.0.1`. Each running server uses a private snapshot of its build and the configured SQLite file. After changing the app, build and restart the server. A browser tab left open across a deployment can load the current version with a refresh. [Verification, screenshots and reproduction commands](evidence/turns-and-checkout.md)
+
+
+## Native Smart Link verification
+
+On the configured local server, enter **ลิ้งรับเงิน 9000+3000+233 ลูกค้า A ค่า gas**. Review the proposed **฿12,233.00**, payer **A** and purpose **ค่า gas**. Enter **แก้ไขยอดเป็น 4500 บาท ลูกค้าชื่อบี** to withdraw the preceding proposal and review the corrected **฿4,500.00** amount for **บี**. Refreshing the run URL reopens the conversation. Approve the current action to create its checkout.
+
+Run the native acceptance suite and the spoken-paced local rehearsal against disposable databases. On macOS:
+
+```sh
+export CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+npm run build
+LIVE_REPORT=/tmp/paypilot-native.json node scripts/live-acceptance.mjs
+node scripts/release-rehearsal.mjs
+```
+
+The rehearsal synthesizes five Thai segments with the macOS Kanya voice and advances Chrome at their measured pace. Its clock includes provider waits and browser steps. [Native acceptance and limitations](evidence/native-agent.md)

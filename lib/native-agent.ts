@@ -24,7 +24,7 @@ const reply = z.object({
                 }),
               }),
             )
-            .optional(),
+            .nullish(),
         }),
       }),
     )

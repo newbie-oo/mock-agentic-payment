@@ -529,7 +529,7 @@ test("fixed Bangkok native create, matching tool_call_id, clarification and exac
       const message =
         turns++ === 0
           ? { tool_calls: [call], content: null }
-          : { content: "Please approve the stored link proposal." };
+          : { content: "Please approve the stored link proposal.", tool_calls: null };
       if (turns === 2) {
         assert.equal(last.tool_call_id, call.id);
         assert.equal(JSON.parse(last.content).data.status, "PROPOSED");

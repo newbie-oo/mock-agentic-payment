@@ -3,23 +3,8 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, merchant, day } from "./db";
 
-export const method = z.enum(["QR", "CARD"]);
-const id = z.string().min(1).max(100);
-export const createInput = z
-  .object({
-    amount: z
-      .number()
-      .int()
-      .min(1)
-      .max(2147483647)
-      .describe("THB satang, 100 per baht"),
-    currency: z.literal("THB").default("THB"),
-    customer: z.string().trim().min(1).max(100),
-    description: z.string().trim().min(1).max(250),
-    methods: z.array(method).min(1).max(2).default(["QR"]),
-    expires: z.iso.datetime().optional(),
-  })
-  .strict();
+import { method, recordId as id, createInput } from "./proposal-input";
+export { method, createInput };
 export const replaceInput = z.object({ linkId: id }).strict();
 export const noticeInput = z
   .object({ linkId: id, body: z.string().trim().min(1).max(1000) })

@@ -127,11 +127,14 @@ function parseCreate(prompt: string) {
     )?.[1];
   if (!amount || !customer || !description) return null;
   const hours = prompt.match(/(\d+)\s*(?:ชั่วโมง|hours?)/i);
-  const expires = /พรุ่งนี้|tomorrow/i.test(prompt)
+  const tomorrow = /พรุ่งนี้|tomorrow/i.test(prompt);
+  const time = prompt.match(/(?:เวลา|at)?\s*([01]?\d|2[0-3]):([0-5]\d)/i);
+  const tomorrowStart =
+    (Math.floor((Date.now() + 7 * 3600000) / day) + 1) * day - 7 * 3600000;
+  const expires = tomorrow
     ? new Date(
-        (Math.floor((Date.now() + 7 * 3600000) / day) + 2) * day -
-          7 * 3600000 -
-          1,
+        tomorrowStart +
+          (time ? (Number(time[1]) * 60 + Number(time[2])) * 60000 : day - 1),
       )
     : new Date(Date.now() + (hours ? Number(hours[1]) * 3600000 : day));
   return {

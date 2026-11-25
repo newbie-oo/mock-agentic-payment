@@ -286,8 +286,15 @@ test("HTTP lost-response replay, late outcomes, partial batch and untrusted desc
   };
   const [paid, other] = await Promise.all([newLink(), newLink()]);
   const run = await runRecord("Batch", "Manual");
-  for (const l of [paid, other])
-    await propose(run.id, "save_notification", { linkId: l.id, body: "ทดสอบ" });
+  await propose(run.id, "save_notification", {
+    linkId: paid.id,
+    body: "ทดสอบ",
+  });
+  await db.link.update({
+    where: { id: other.id },
+    data: { expires: new Date(Date.now() - 1000) },
+  });
+  await propose(run.id, "regenerate_payment_link", { linkId: other.id });
   // Simulate a damaged legacy proposal to exercise per-item fault isolation.
   const invalid = await db.agentAction.create({
     data: {
@@ -329,10 +336,13 @@ test("HTTP lost-response replay, late outcomes, partial batch and untrusted desc
     result.outcomes.find((a: { id: string }) => a.id === invalid.id).status,
     "FAILED",
   );
-  await api("decisions", { runId: run.id, approve: true });
+  const replayBatch = (await api("decisions", { runId: run.id, approve: true }))
+    .value;
+  assert.deepEqual(result.outcomes, replayBatch.outcomes);
+  assert.equal(await db.link.count({ where: { orderId: other.orderId } }), 2);
   assert.equal(
-    await db.notification.count({ where: { orderId: other.orderId } }),
-    1,
+    await db.notification.count({ where: { orderId: paid.orderId } }),
+    0,
   );
   const count = await db.order.count();
   const review = await agent(hero);
@@ -470,4 +480,84 @@ test("declines, replacement and settlement preserve separate attempt and order d
   assert.equal(result.denominator - baseline.denominator, 3);
   assert.equal(result.failed - baseline.failed, 2);
   assert.equal(result.success - baseline.success, 1);
+});
+
+test("fixed Bangkok native create, matching tool_call_id, clarification and exact readback", async (t) => {
+  const fixed = Date.parse("2026-11-25T03:00:00Z");
+  t.mock.method(Date, "now", () => fixed);
+  const english =
+    "Create payment link for website design, THB 5,000 tomorrow at 18:00";
+  const partial = await api("agent", { prompt: english });
+  assert.equal(partial.value.status, "NEEDS_INPUT");
+  const full = await api("agent", {
+    runId: partial.value.id,
+    prompt: "for customer Somchai",
+  });
+  const proposed = full.value.actions.find(
+    (a: { status: string }) => a.status === "PROPOSED",
+  );
+  assert.equal(proposed.payload.expires, "2026-11-26T11:00:00.000Z");
+  const thai = await api("agent", {
+    prompt:
+      "สร้างลิงก์รับเงินค่าทำเว็บไซต์ 5,000 บาท ให้ลูกค้าสมชาย หมดอายุพรุ่งนี้ เวลา 18:00",
+  });
+  assert.equal(
+    thai.value.actions.find((a: { status: string }) => a.status === "PROPOSED")
+      .payload.expires,
+    proposed.payload.expires,
+  );
+  const initial = await db.link.count();
+  const args = {
+    customer: "Somchai",
+    description: "Website design",
+    amount: 500000,
+    methods: ["QR"],
+    expires: proposed.payload.expires,
+  };
+  const call = {
+    id: "native-create",
+    type: "function",
+    function: { name: "create_payment_link", arguments: JSON.stringify(args) },
+  };
+  let turns = 0;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, opts: { body: string }) => {
+      const request = JSON.parse(opts.body);
+      const last = request.messages.at(-1);
+      const message =
+        turns++ === 0
+          ? { tool_calls: [call], content: null }
+          : { content: "Please approve the stored link proposal." };
+      if (turns === 2) {
+        assert.equal(last.tool_call_id, call.id);
+        assert.equal(JSON.parse(last.content).data.status, "PROPOSED");
+      }
+      return Response.json({ choices: [{ message }] });
+    },
+  );
+  process.env.OPENAI_API_KEY = crypto.randomUUID();
+  try {
+    const run = await agent(english + " for customer Somchai");
+    assert.equal(turns, 2);
+    assert.equal(await db.link.count(), initial);
+    const action = run.actions.find((a) => a.status === "PROPOSED")!;
+    const link = JSON.parse((await decide(action.id, true)).result!);
+    assert.equal((await getLink(link.id)).order.amount, 500000);
+    assert.equal(
+      JSON.parse((await decide(action.id, true)).result!).id,
+      link.id,
+    );
+    assert.equal(await db.link.count(), initial + 1);
+    const invalid = await dispatch(
+      "create_payment_link",
+      { ...args, amount: 500000.1 },
+      { m: merchant, runId: run.id },
+    );
+    assert.equal(invalid.success, false);
+    assert.equal(await db.link.count(), initial + 1);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
 });

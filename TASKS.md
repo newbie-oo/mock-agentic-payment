@@ -33,3 +33,15 @@ The coordinator owns [HTTP contract and parity](https://github.com/newbie-oo/moc
 ## Assistant follow-up and independent remediation
 
 Passed keyboard and submit-button reproduction on an isolated production server; implemented focused results and in-run buying-versus-collection clarification. The fixed-clock corpus improved from 6/22 to 22/22 tuning and 2/9 to 9/9 holdout in deterministic mode. The native protocol fixture was exercised independently. Live model quality remains unverified because no key was configured. All seven numbered review findings, query adjustments and reproducible checks are recorded in the [assistant review](evidence/assistant-review.md).
+
+## Follow-up acceptance on cards 1–8
+
+| Status | Card | Evidence |
+|---|---|---|
+| Passed | 1, 2, 3 | Existing six-phase plan, glossary, ADR and two-merchant/reset fixtures retained. Updated application queries and conversation receipts use the same merchant and settlement boundaries. |
+| Passed | 4 | Immutable build serving; Chrome direct/reload/client navigation, decoded inert QR, mixed/card-only/expired/paid/missing links, checkout replay and settlement races. |
+| Passed | 5, 6 | 61 deterministic HTTP turns; native fixture enforces corrected fields; approved deposit readback; exact recipient/order lookup with zero, one and multiple matches. |
+| Passed | 7, 8 | Desktop/mobile conversation with confirmation, approval and visible verified URL; HTTP response lost after commit, replay and conflicting request ID; browser/API/SQLite agreement for the one-message gas request. |
+| Unverified | 1, 2, 5, 7 | Human interview duration, historical pre-implementation review and live native model behavior. No authorized provider key was configured. |
+
+The [follow-up evidence](evidence/turns-and-checkout.md) includes the exact reproduction commands, observed baseline, separate mode results, checkout incident and screenshots. The coordinator manages GitHub card status.

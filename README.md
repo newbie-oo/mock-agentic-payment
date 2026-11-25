@@ -115,3 +115,11 @@ SQLite independently reported 17 paid orders and 3,960,000 satang after replay. 
 ## Assistant input and review
 
 Enter submits the composer. Shift+Enter adds a line. Reply within the same run to supply missing information, revise a pending amount or cancel a preview. The local server distinguishes purchasing from collecting a payment before offering a merchant action. Read the [language evaluation and review evidence](evidence/assistant-review.md) for before/after results and optional live evaluation commands.
+
+## Assistant and checkout walkthrough
+
+Open AI Assistant and enter **ลิ้งรับเงิน 1000 ลูกค้า A ค่า gas**. The preview shows A, ฿1,000, ค่า gas, QR and the expiry. Select **อนุมัติและสร้างลิงก์** to create the order and get the checkout URL. With an ambiguous request such as **ลิ้ง ค่าบัตร 6000 เอ จ่าย**, the assistant first asks you to confirm the amount and payer in the same conversation. Confirmation prepares a preview. Merchant approval creates the link.
+
+The browser sends an optional UUID `requestId` with each agent turn. HTTP clients can pass the same UUID, prompt and run ID on a retry after a lost response. The server returns the existing run state. Reuse with different content returns 409. An active QR-enabled checkout displays a locally generated QR containing `PAYPILOT-SANDBOX:<link UUID>`. Choose the method and outcome and press **Simulate checkout** to record a demo attempt.
+
+For the local production demo, run `npm run build` then `npm run start -- --hostname 127.0.0.1`. Each running server uses a private snapshot of its build and the configured SQLite file. After changing the app, build and restart the server. A browser tab left open across a deployment can load the current version with a refresh. [Verification, screenshots and reproduction commands](evidence/turns-and-checkout.md)

@@ -42,3 +42,12 @@ export function validateQuotedMoney(text: string) {
     satang((match[1] ?? match[2]).replaceAll(",", ""));
   }
 }
+
+// A number explicitly labelled as a reference or contact is not a quoted price.
+export function referenceOnly(text: string) {
+  const rest = text.replace(
+    /(?:เลขอ้างอิง|รหัสอ้างอิง|หมายเลขบิล|เบอร์โทร|\b(?:ref(?:erence)?|invoice id|contact|phone)(?: number)?\b)\s*[:#-]?\s*[a-z]*[\d,-]+/gi,
+    "",
+  );
+  return rest !== text && !/\d/.test(rest);
+}

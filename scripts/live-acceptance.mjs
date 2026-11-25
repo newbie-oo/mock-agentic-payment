@@ -225,6 +225,31 @@ try {
       },
     ],
     [
+      "deny the only method",
+      async (s) => {
+        const first = await s("ออกลิงก์ค่าคอร์ส 725 บาทให้ลูกค้าชื่อแพร รับ QR เท่านั้น");
+        const original = pending(first)[0];
+        assert.equal(original?.amountMinor, 72500);
+        const no = await s("ไม่เอา QR", first.id);
+        clarify(no);
+        assert.equal(
+          (await api("decision", { actionId: original.id, approve: true }))
+            .status,
+          "REJECTED",
+        );
+        preview(await s("ใช้บัตร", first.id), 72500, "แพร", ["CARD"]);
+      },
+    ],
+    [
+      "reference cannot become price",
+      async (s) => {
+        const r = await s("ลิ้ง ค่าของ เลขอ้างอิง 6000 เอ จ่าย");
+        clarify(r);
+        assert.notEqual(r.nextAction, "CONFIRM_DETAILS");
+        assert.doesNotMatch(r.summary, /6,000 บาท จาก/);
+      },
+    ],
+    [
       "corrected confirmation",
       async (s) => {
         const r = await s("ลิ้ง ค่าบัตร 6000 เอ จ่าย");

@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { createInput } from "./proposal-input";
-import { explicitSum, satang, validateQuotedMoney } from "./money";
+import {
+  explicitSum,
+  referenceOnly,
+  satang,
+  validateQuotedMoney,
+} from "./money";
 import { priorPurpose, type ChatMessage } from "./native-history";
 import { confirmationPrefix, type Confirmation } from "./confirmation";
 
@@ -32,7 +37,7 @@ export const intentSchema = z.object({
     .enum(["identified", "inferred"])
     .optional()
     .describe(
-      "For every create or confirm: identified when explicitly labelled customer/payer, or directly the object of an instruction to charge them. A short name merely adjacent to a pay verb and fee is inferred.",
+      "For every create or confirm: identified when explicitly labelled customer/payer, or directly the object of an instruction to charge them. A name identified with from, จาก or ให้ลูกค้า is identified. A short name merely adjacent to a pay verb and fee is inferred.",
     ),
   requestQuote: z
     .string()
@@ -192,6 +197,22 @@ export function interpret(
   }
   const terms = intent.terms;
   if (!terms) throw Error("Provider omitted the checkout details");
+  if (!c.priorPreview && referenceOnly(c.latest))
+    return ask(
+      "เลขอ้างอิงใช้ระบุบิล กรุณายืนยันยอดเงินที่จะรับเป็นบาท",
+      "That number identifies the bill. What THB amount should I collect?",
+    );
+  if (c.priorPreview) {
+    const added = terms.methods.filter(
+      (method) => !c.priorPreview!.methods.includes(method),
+    );
+    const methodLabels = { CARD: /card|บัตร/i, QR: /qr|promptpay|พร้อมเพย์/i };
+    if (added.some((method) => !methodLabels[method].test(c.latest)))
+      return ask(
+        "ต้องการใช้วิธีชำระใดแทน? ระบุวิธีที่ต้องการก่อนตรวจข้อเสนออีกครั้ง",
+        "Which alternative payment method should the preview enable?",
+      );
+  }
   const amountOnly =
     c.turn > 0 && /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(c.latest);
   try {

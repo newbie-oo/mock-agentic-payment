@@ -49,21 +49,17 @@ export async function native(
   if (priorPreview) {
     const snapshot = createInput.parse(priorPreview);
     messages[0].content +=
-      " Previous unapproved checkout preview (withdrawn for this edit): " +
-      JSON.stringify(snapshot) +
-      ". Its expiry at the current server time is " +
+      " The previous preview in the conversation was withdrawn for editing. Its stored UTC expiry is " +
+      snapshot.expires +
+      ". The server evaluated it as " +
       (Date.parse(snapshot.expires!) > Date.now() ? "VALID" : "EXPIRED") +
       ". Preserve all fields the merchant did not change. A valid link expiry is unrelated to the execution deadline.";
   }
+  if (accepted)
+    messages[0].content +=
+      " The merchant accepted the preceding displayed terms. Call create_payment_link with an empty object; the server binds its saved terms.";
   const offset = messages.length;
   messages.push({ role: "user", content: latest });
-  if (accepted)
-    messages.push({
-      role: "system",
-      content:
-        "The merchant accepted the previously displayed details. Call create_payment_link using exactly " +
-        JSON.stringify(priorTerms),
-    });
   const finish = (summary: string) =>
     recordReply(
       c.runId,

@@ -1136,3 +1136,45 @@ test("revising a preview preserves a valid expiry and asks for a truly expired o
   assert.equal(closed.intent.intent, "clarify");
   assert.match(closed.summary ?? "", /หมดอายุ/);
 });
+
+test("a refused method cannot silently enable an alternative and a reference cannot authorize an amount", async () => {
+  const { interpret } = await import("../lib/merchant-intent");
+  const intent = {
+    intent: "create",
+    terms: {
+      customer: "Test",
+      description: "Demo fee",
+      amount: 600000,
+      currency: "THB",
+      methods: ["CARD"],
+      expires: new Date(Date.now() + 86400000).toISOString(),
+    },
+  };
+  const ctx = {
+    latest: "ไม่เอา QR",
+    thai: true,
+    turn: 1,
+    started: new Date(),
+    history: [],
+    priorTerms: null,
+    priorPreview: {
+      ...intent.terms,
+      currency: "THB" as const,
+      methods: ["QR" as const],
+    },
+  };
+  assert.equal(interpret(intent, ctx).intent.intent, "clarify");
+  assert.equal(
+    interpret(intent, { ...ctx, latest: "ใช้บัตร" }).intent.terms?.methods[0],
+    "CARD",
+  );
+  assert.equal(
+    interpret(intent, {
+      ...ctx,
+      turn: 0,
+      priorPreview: null,
+      latest: "ลิ้ง ค่าของ เลขอ้างอิง 6000 เอ จ่าย",
+    }).intent.intent,
+    "clarify",
+  );
+});

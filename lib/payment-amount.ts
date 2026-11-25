@@ -1,140 +1,67 @@
-import { satang } from "./money";
-type AmountUpdate = { amount: number } | { question: "choice" | "number" };
-const digits: Record<string, number> = {
-  ศูนย์: 0,
-  หนึ่ง: 1,
-  เอ็ด: 1,
-  สอง: 2,
-  ยี่: 2,
-  สาม: 3,
-  สี่: 4,
-  ห้า: 5,
-  หก: 6,
-  เจ็ด: 7,
-  แปด: 8,
-  เก้า: 9,
-};
-const scales: Record<string, number> = {
-  สิบ: 10,
-  ร้อย: 100,
-  พัน: 1000,
-  หมื่น: 10000,
-  แสน: 100000,
-  ล้าน: 1000000,
-};
-const numeral = Object.keys({ ...digits, ...scales }).join("|");
-const spoken = new RegExp("((?:(?:" + numeral + ")\\s*)+)บาท", "g");
-function thaiInteger(words: string): number | undefined {
-  const tokens = words.match(new RegExp(numeral, "g")) ?? [];
-  let value = 0,
-    previous = Infinity,
-    pending: number | undefined;
-  for (const token of tokens) {
-    if (token in digits) {
-      if (pending !== undefined) return;
-      pending = digits[token];
-    } else {
-      const scale = scales[token];
-      if (scale >= previous || (pending === undefined && scale !== 10)) return;
-      value += (pending ?? 1) * scale;
-      previous = scale;
-      pending = undefined;
-    }
-  }
-  return value + (pending ?? 0);
-}
-const num = "-?\\d[\\d,]*(?:\\.\\d+)?";
-function decimalBaht(value: string) {
-  if (value.includes(",") && !/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(value))
-    throw Error("Unclear amount grouping");
-  return satang(value.replaceAll(",", ""));
-}
+import { explicitSum, satang } from "./money";
+
+// A numeric fallback for the offline demo. The native agent reads the user's
+// own text and never receives a provisional amount from this function.
 export function amountUpdate(
   text: string,
   awaiting: boolean,
   allowUnitless = true,
-): AmountUpdate | undefined {
+): { amount: number } | { question: "number" | "choice" } | undefined {
   if (
-    new RegExp(
-      num + "\\s*(?:บาท|baht|THB)?\\s*(?:หรือ|or)\\s*(?:THB|฿)?\\s*" + num,
-      "i",
-    ).test(text) ||
-    /จำยอด.*ไม่ได้|ราคายังไม่ได้คุย|not sure (?:of |about )?(?:the )?(?:price|amount)/i.test(
+    /(?:\d\s*(?:บาท|baht)?\s*(?:หรือ|or)\s*\d)|จำยอด.*ไม่ได้|ราคายังไม่ได้คุย|not sure.*(?:price|amount)/i.test(
       text,
     )
   )
     return { question: "choice" };
-  const values = new Set<number>();
-  try {
-    for (const m of text.matchAll(
+  if (/สตางค์|[ก-๙]บาท/.test(text)) return { question: "number" };
+  const number = "-?\\d[\\d,]*(?:\\.\\d+)?";
+  const labelled = new RegExp(
+    "(?:THB|฿|ราคา|price(?: of)?|เปลี่ยน(?:ยอด)?เป็น|change (?:it |the amount )?to)\\s*(" +
+      number +
+      ")|(" +
+      number +
+      ")\\s*(?:บาท|baht|THB)",
+    "gi",
+  );
+  const values = [...text.matchAll(labelled)].map((m) => m[1] ?? m[2]);
+  if (allowUnitless && !values.length) {
+    const afterVerb = text.match(
       new RegExp(
-        "(?:THB|฿|ราคา|price(?: of)?|เปลี่ยน(?:ยอด)?เป็น|change (?:it |the amount )?to)\\s*(" +
-          num +
-          ")|(" +
-          num +
-          ")\\s*(?:บาท|baht|THB)",
-        "gi",
+        "(?:รับเงิน|เก็บเงิน|เรียกเก็บ|charge|collect)\\s*(" + number + ")(?=\\s|$)",
+        "i",
       ),
-    ))
-      values.add(decimalBaht(m[1] ?? m[2]));
-    if (allowUnitless) {
-      for (const m of text.matchAll(
-        new RegExp(
-          "(?<![\\p{L}\\p{M}\\d.,:-])(" + num + ")(?![\\p{L}\\p{M}\\d.,:%-])",
-          "gu",
-        ),
-      )) {
-        const before = text.slice(0, m.index).trimEnd();
-        const after = text.slice(m.index + m[0].length).trimStart();
-        if (
-          /^(?:ชิ้น|คน|วัน|ชม|ชั่วโมง|นาที|โมง|hours?|days?|items?|units?|%)/i.test(
-            after,
-          )
-        )
-          continue;
-        if (
-          /(?:อ้างอิง|เลข|รหัส|บิล|โทร|เวลา|นัด|ref|reference|invoice|phone|order|qty|quantity|within)\s*[:#]?\s*$/i.test(
-            before,
-          )
-        )
-          continue;
-        const moneyLabel =
-          /(?:รับเงิน|เก็บเงิน|ลิงก์|payment link|ยอด(?:สุทธิ)?|คิดเงิน|เก็บ(?:แค่)?|ลดเหลือ|เปลี่ยนเป็น|เรียกเก็บ|\bcollect|\bcharge|\bamount|\bmake it)\s*[:=]?\s*$/i.test(
-            before,
-          );
-        const fee = before.match(/ค่า([\p{L}\p{M} ]+)$/u)?.[1];
-        const feeLabel =
-          fee &&
-          !/(?:อ้างอิง|รหัส|เลข|โทร|นัด|ภายใน|จำนวน|เวลา|reference|phone|qty|order|bill|code|ref)/i.test(
-            fee,
-          );
-        if (moneyLabel || feeLabel) values.add(decimalBaht(m[1]));
-      }
-    }
-    for (const m of text.matchAll(spoken)) {
-      const value = thaiInteger(m[1]);
-      // Never accept just the fractional suffix of a spoken price.
-      const prefix = text.slice(0, m.index);
-      if (/หรือ\s*$/.test(prefix)) return { question: "choice" };
-      if (value === undefined || /(?:จุด|ลบ|[-.\d])\s*$/.test(prefix))
-        return { question: "number" };
-      values.add(satang(String(value)));
-    }
-    const compact = text.match(/(?:มัดจำ|deposit)\s*(\d+(?:\.\d+)?)k\b/i);
-    if (compact) values.add(satang(String(Number(compact[1]) * 1000)));
+    );
+    const afterFee = text.match(
+      new RegExp("ค่า[\\p{L}\\p{M} ]+?\\s+(" + number + ")(?=\\s|$)", "u"),
+    );
+    const candidate = afterVerb?.[1] ?? afterFee?.[1];
     if (
-      !values.size &&
-      awaiting &&
-      new RegExp("^" + num + "$").test(text.trim())
+      candidate &&
+      !/อ้างอิง|รหัส|จำนวน|โทร|reference|phone|invoice id/i.test(text)
     )
-      values.add(decimalBaht(text.trim()));
+      values.push(candidate);
+  }
+  if (
+    !values.length &&
+    awaiting &&
+    new RegExp("^" + number + "$").test(text.trim())
+  )
+    values.push(text.trim());
+  try {
+    const sum = explicitSum(text);
+    if (sum !== undefined) return { amount: sum };
+    if (text.includes("+")) return { question: "number" };
+    const unique = new Set(
+      values.map((v) => {
+        if (v.includes(",") && !/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(v))
+          throw Error("Unclear grouping");
+        return satang(v.replaceAll(",", ""));
+      }),
+    );
+    if (unique.size > 1) return { question: "choice" };
+    if (unique.size) return { amount: [...unique][0] };
   } catch {
     return { question: "number" };
   }
-  if (values.size > 1) return { question: "choice" };
-  if (values.size) return { amount: [...values][0] };
-  if (/บาท/.test(text)) return { question: "number" };
-}
-export function beforeThaiNumeral(text: string) {
-  return text.split(new RegExp("(?=(?:" + numeral + ")+บาท)"))[0];
+  if (/บาท/i.test(text)) return { question: "number" };
 }

@@ -55,7 +55,11 @@ try {
   })) {
     const rows = [];
     let last;
-    for (const [id, prompt, expect] of cases) {
+    for (const [id, prompt, expected] of cases) {
+      const expect =
+        !live && expected.demoClarifiesMoney
+          ? { status: "NEEDS_INPUT", words: ["ตัวเลข|ยอดเงิน"] }
+          : expected;
       const before = ledger();
       const previous = expect.continue ? last : null;
       const res = await fetch(base + "/api/agent", {

@@ -20,11 +20,20 @@ export const tuning = [
     "ขอหลิงก์เกบตังค์น้องฟ้า ๕๐๐ บาท ให้จ่ายใน ๒ ชม.",
     { status: "NEEDS_INPUT", words: ["500", "2", "รายละเอียด|ค่าอะไร"] },
   ],
-  ["spoken", "ฝากเก็บพี่เมย์ห้าร้อยห้าสิบบาทค่าขนม", { amount: 55000, name: "เมย์" }],
+  [
+    "spoken",
+    "ฝากเก็บพี่เมย์ห้าร้อยห้าสิบบาทค่าขนม",
+    { amount: 55000, name: "เมย์", demoClarifiesMoney: true },
+  ],
   [
     "mixed",
     "มัดจำ 5k ของคุณบี by tomorrow noon ขอ QR",
-    { amount: 500000, name: "บี", expiry: "2026-11-26T05:00:00.000Z" },
+    {
+      amount: 500000,
+      name: "บี",
+      expiry: "2026-11-26T05:00:00.000Z",
+      demoClarifiesMoney: true,
+    },
   ],
   [
     "percent",
@@ -92,7 +101,7 @@ export const tuning = [
     {
       tool: "get_dashboard_metrics",
       status: "NEEDS_INPUT",
-      words: ["ลูกค้า", "ออเดอร์"],
+      words: ["ลูกค้า", "ออเดอร์", "34,100"],
     },
   ],
 ];
@@ -212,7 +221,12 @@ export const corrections = [
   [
     "thai-full",
     "สร้างลิงก์ หนึ่งพันห้าร้อยบาท ค่าออกแบบ จากคุณมาลี",
-    { amount: 150000, name: "มาลี", description: "ค่าออกแบบ" },
+    {
+      amount: 150000,
+      name: "มาลี",
+      description: "ค่าออกแบบ",
+      demoClarifiesMoney: true,
+    },
   ],
   [
     "unknown-recipient",
@@ -286,7 +300,7 @@ export const variants = [
   [
     "four-scales",
     "สร้างลิงก์ สองหมื่นสามพัน สี่ร้อยยี่สิบเอ็ดบาท ค่าพิมพ์ จากคุณวิภา",
-    { amount: 2342100, name: "วิภา" },
+    { amount: 2342100, name: "วิภา", demoClarifiesMoney: true },
   ],
   [
     "malformed-spoken",

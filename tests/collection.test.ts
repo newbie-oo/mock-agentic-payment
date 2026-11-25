@@ -17,6 +17,27 @@ import {
 } from "../lib/service";
 import { dispatch } from "../lib/tools";
 
+function intentResponse(intent: string, values: Record<string, unknown> = {}) {
+  return {
+    choices: [
+      {
+        message: {
+          content: null,
+          tool_calls: [
+            {
+              id: "intent",
+              type: "function",
+              function: {
+                name: "interpret_merchant_request",
+                arguments: JSON.stringify({ intent, ...values }),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
 const prompt = "สร้างลิงก์รับเงินค่าทำเว็บไซต์ 5,000 บาท ให้ลูกค้าสมชาย หมดอายุพรุ่งนี้";
 before(() => {
   execFileSync("node_modules/.bin/prisma", ["migrate", "deploy"]);
@@ -126,6 +147,10 @@ test("native tool protocol round trip, bad arguments, parallel budget and provid
     let body = "";
     for await (const chunk of req) body += chunk;
     const data = JSON.parse(body);
+    if (data.tool_choice?.function?.name === "interpret_merchant_request") {
+      res.end(JSON.stringify(intentResponse("read")));
+      return;
+    }
     assert.ok(
       data.tools.some(
         (t: { function: { name: string } }) =>
@@ -137,7 +162,10 @@ test("native tool protocol round trip, bad arguments, parallel budget and provid
       return;
     }
     let message;
-    if (data.messages.at(-1).role === "tool") {
+    if (
+      data.messages.at(-1).role === "tool" &&
+      data.messages.at(-1).tool_call_id !== "intent"
+    ) {
       const result = JSON.parse(data.messages.at(-1).content);
       readback =
         behavior === "invalid" ? !result.success : result.data.revenue > 0;
@@ -525,11 +553,16 @@ test("fixed Bangkok native create, matching tool_call_id, clarification and exac
     "fetch",
     async (_url: unknown, opts: { body: string }) => {
       const request = JSON.parse(opts.body);
+      if (request.tool_choice?.function?.name === "interpret_merchant_request")
+        return Response.json(intentResponse("create", { terms: args }));
       const last = request.messages.at(-1);
       const message =
         turns++ === 0
           ? { tool_calls: [call], content: null }
-          : { content: "Please approve the stored link proposal.", tool_calls: null };
+          : {
+              content: "Please approve the stored link proposal.",
+              tool_calls: null,
+            };
       if (turns === 2) {
         assert.equal(last.tool_call_id, call.id);
         assert.equal(JSON.parse(last.content).data.status, "PROPOSED");
@@ -613,6 +646,17 @@ test("provider fixture blocks writes for read-only turns and clarifies buying be
     "fetch",
     async (_url: unknown, opts: { body: string }) => {
       const body = JSON.parse(opts.body);
+      if (body.tool_choice?.function?.name === "interpret_merchant_request") {
+        const latest = body.messages.at(-1).content;
+        const outcome = latest.includes("want to buy")
+          ? intentResponse("clarify", { message: "Buying or collecting?" })
+          : latest.includes("I am the buyer")
+            ? intentResponse("inform", {
+                message: "Buying a home is outside the workspace.",
+              })
+            : intentResponse("read");
+        return Response.json(outcome);
+      }
       calls++;
       assert.ok(
         !body.tools.some(
@@ -701,8 +745,11 @@ test("native run persists turns, tool budget and deadline across clarifications"
     "fetch",
     async (_url: unknown, init: { body: string }) => {
       const body = JSON.parse(init.body);
+      if (body.tool_choice?.function?.name === "interpret_merchant_request")
+        return Response.json(intentResponse("read"));
       const message =
-        body.messages.at(-1).role === "tool"
+        body.messages.at(-1).role === "tool" &&
+        body.messages.at(-1).tool_call_id !== "intent"
           ? { content: "NEED_INPUT Which period?" }
           : {
               content: null,
@@ -717,13 +764,15 @@ test("native run persists turns, tool budget and deadline across clarifications"
   try {
     const first = (await api("agent", { prompt: "Read metrics" })).value;
     assert.equal(first.status, "NEEDS_INPUT");
-    assert.equal(first.providerCalls, 20);
-    assert.equal(first.providerTurns, 2);
+    assert.equal(first.providerCalls, 21);
+    assert.equal(first.providerTurns, 3);
     stage++;
     const next = await api("agent", { runId: first.id, prompt: "Last month" });
     assert.equal(next.code, 502);
-    assert.equal(next.value.providerCalls, 20);
-    assert.equal(next.value.deadlineAt, first.deadlineAt);
+    assert.equal(next.value.providerCalls, 22);
+    assert.ok(
+      Date.parse(next.value.deadlineAt) >= Date.parse(first.deadlineAt),
+    );
     assert.match(next.value.error, /budget/);
   } finally {
     delete process.env.OPENAI_API_KEY;
@@ -736,9 +785,13 @@ test("native tool failure must recover a verified read before claiming completio
     globalThis,
     "fetch",
     async (_url: unknown, opts: { body: string }) => {
-      const messages = JSON.parse(opts.body).messages;
+      const req = JSON.parse(opts.body);
+      if (req.tool_choice?.function?.name === "interpret_merchant_request")
+        return Response.json(intentResponse("read"));
+      const messages = req.messages;
       const n = messages.filter(
-        (m: { role: string }) => m.role === "tool",
+        (m: { role: string; tool_call_id: string }) =>
+          m.role === "tool" && m.tool_call_id !== "intent",
       ).length;
       const message =
         n === 0 || (n === 1 && recover)
@@ -848,20 +901,28 @@ test("native fixture enforces corrected customer, satang and allowed methods bef
     "fetch",
     async (_url: unknown, init: { body: string }) => {
       const req = JSON.parse(init.body);
-      if (req.messages.at(-1).role === "tool") {
+      const terms = {
+        amount: 37000,
+        customer: "อรุณ",
+        description: "เงินมัดจำ",
+        methods: ["CARD"],
+        expires: new Date(Date.now() + 86400000).toISOString(),
+      };
+      if (req.tool_choice?.function?.name === "interpret_merchant_request") {
+        if (req.messages.at(-1).content.includes("4800"))
+          return Response.json(
+            intentResponse("clarify", { message: "ซื้อเองหรือรับเงิน?" }),
+          );
+        return Response.json(intentResponse("create", { terms }));
+      }
+      if (req.messages.at(-1).tool_call_id === "preview") {
         assert.equal(req.messages.at(-1).tool_call_id, "preview");
         toolReplies++;
         return Response.json({
           choices: [{ message: { content: "Review the confirmed details." } }],
         });
       }
-      const terms = JSON.parse(
-        req.messages[1].content.split("\nConfirmed checkout fields: ").at(-1),
-      );
-      assert.deepEqual(
-        [terms.customer, terms.amount, terms.methods],
-        ["อรุณ", 37000, ["CARD"]],
-      );
+      const interpreted = JSON.parse(req.messages.at(-1).content).terms;
       const changes =
         scenario === "amount"
           ? { amount: 480000 }
@@ -880,7 +941,7 @@ test("native fixture enforces corrected customer, satang and allowed methods bef
                   type: "function",
                   function: {
                     name: "create_payment_link",
-                    arguments: JSON.stringify({ ...terms, ...changes }),
+                    arguments: JSON.stringify({ ...interpreted, ...changes }),
                   },
                 },
               ],
@@ -912,6 +973,115 @@ test("native fixture enforces corrected customer, satang and allowed methods bef
       assert.equal(await db.order.count(), initial);
     }
     assert.equal(toolReplies, 1);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+test("explicit THB additions preserve decimals, reject overflow and separate deposit bases", async () => {
+  const { explicitSum } = await import("../lib/money");
+  assert.equal(explicitSum("9000+3000+233"), 1223300);
+  assert.equal(explicitSum("19.75 + 67.25 + 0.01 baht"), 8701);
+  assert.throws(() => explicitSum("21474836.47 + 0.01"));
+  assert.throws(() => explicitSum("1.005+4"));
+  assert.equal(
+    explicitSum("9000+3000 total, collect a 500 deposit"),
+    undefined,
+  );
+  assert.equal(explicitSum("5*6+7"), undefined);
+});
+test("native follow-up replays stored user, assistant and matching tool replies after clarification", async (t) => {
+  process.env.OPENAI_API_KEY = crypto.randomUUID();
+  const latest = "The total is 12,233";
+  let rolePairsChecked = false;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, init: { body: string }) => {
+      const req = JSON.parse(init.body),
+        msgs = req.messages;
+      if (req.tool_choice?.function?.name === "interpret_merchant_request") {
+        if (msgs.at(-1).content === latest) {
+          const tool = msgs.findIndex(
+            (m: { role: string }) => m.role === "tool",
+          );
+          assert.equal(msgs[tool - 1].role, "assistant");
+          assert.equal(
+            msgs[tool - 1].tool_calls[0].id,
+            msgs[tool].tool_call_id,
+          );
+          assert.equal(msgs[1].role, "user");
+          assert.equal(msgs[tool + 1].role, "assistant");
+          assert.equal(msgs.at(-1).role, "user");
+          rolePairsChecked = true;
+          return Response.json(
+            intentResponse("create", {
+              terms: {
+                amount: 1223300,
+                customer: "A",
+                description: "ค่า gas",
+                methods: ["QR"],
+              },
+            }),
+          );
+        }
+        return Response.json(
+          intentResponse("clarify", {
+            message: "Please confirm the total for A's gas invoice.",
+          }),
+        );
+      }
+      if (req.tool_choice?.function?.name === "create_payment_link")
+        return Response.json({
+          choices: [
+            {
+              message: {
+                tool_calls: [
+                  {
+                    id: "verified-preview",
+                    type: "function",
+                    function: { name: "create_payment_link", arguments: "{}" },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      return Response.json({
+        choices: [
+          {
+            message: {
+              content: "Review the stored preview.",
+              tool_calls: null,
+            },
+          },
+        ],
+      });
+    },
+  );
+  try {
+    const first = (
+      await api("agent", {
+        prompt: "Invoice customer A for ค่า gas; the total is unclear.",
+      })
+    ).value;
+    assert.equal(first.status, "NEEDS_INPUT");
+    const second = (await api("agent", { prompt: latest, runId: first.id }))
+      .value;
+    assert.ok(rolePairsChecked);
+    assert.equal(second.id, first.id);
+    assert.equal(
+      second.actions.find((a: { status: string }) => a.status === "PROPOSED")
+        .amountMinor,
+      1223300,
+    );
+    assert.ok(
+      second.actions
+        .filter((a: { kind: string }) => a.kind === "Provider transcript")
+        .every(
+          (a: { payload: unknown }) =>
+            !Object.hasOwn(a.payload as object, "messages"),
+        ),
+    );
   } finally {
     delete process.env.OPENAI_API_KEY;
   }

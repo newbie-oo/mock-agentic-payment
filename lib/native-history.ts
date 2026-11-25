@@ -1,0 +1,63 @@
+import { db } from "./db";
+import { confirmation, question } from "./confirmation";
+export type ChatMessage = Record<string, unknown>;
+// Persist only role, visible content and function-call fields, after schema validation.
+export async function nativeHistory(runId: string, prompt: string) {
+  const rows = await db.agentAction.findMany({
+    where: { runId, kind: { in: ["Provider transcript", "Follow-up"] } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { kind: true, payload: true },
+  });
+  const history: ChatMessage[] = [];
+  const recorded = new Set<number>();
+  for (const r of rows.filter((r) => r.kind === "Provider transcript")) {
+    const data = JSON.parse(r.payload);
+    recorded.add(data.turn);
+  }
+  let previous = 0;
+  for (const r of rows) {
+    const data = JSON.parse(r.payload);
+    if (r.kind === "Provider transcript") {
+      history.push(...data.messages);
+      continue;
+    }
+    if (!recorded.has(previous) && data.priorMessage)
+      history.push(
+        { role: "user", content: data.priorMessage },
+        { role: "assistant", content: data.priorReply },
+      );
+    previous++;
+  }
+  const follow = rows.filter((r) => r.kind === "Follow-up").at(-1);
+  return {
+    history,
+    priorTerms: follow ? JSON.parse(follow.payload).confirmation : null,
+    turn: prompt.split("\n").length - 1,
+  };
+}
+export async function recordReply(
+  runId: string,
+  turn: number,
+  messages: ChatMessage[],
+  summary: string,
+  thai: boolean,
+) {
+  const terms = confirmation(summary);
+  const visible = terms
+    ? question(terms, thai)
+    : summary.replace(/^NEED_INPUT\s*/, "");
+  await db.agentAction.create({
+    data: {
+      runId,
+      kind: "Provider transcript",
+      status: "EVENT",
+      payload: JSON.stringify({
+        summary: "Completed provider turn",
+        turn,
+        finishedAt: Date.now(),
+        messages: [...messages, { role: "assistant", content: visible }],
+      }),
+    },
+  });
+  return summary;
+}

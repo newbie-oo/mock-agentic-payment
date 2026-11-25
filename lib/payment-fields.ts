@@ -1,4 +1,3 @@
-import { beforeThaiNumeral } from "./payment-amount";
 export type Method = "QR" | "CARD";
 export interface MethodState {
   selected: Method[];
@@ -22,7 +21,7 @@ export function paymentMethods(
     if (/(?:ค่า|ราคา)\s*$/.test(before)) continue;
     mentioned = true;
     negative =
-      /(?:ไม่(?:เอา|ใช้|รับ|ต้องการ)|งด|ยกเว้น|no|not|without|except|exclude|don.t (?:use|want|accept))\s*(?:ทั้ง|either|ชำระ(?:ผ่าน|ด้วย)?)?\s*$/i.test(
+      /(?:ไม่(?:เอา|ใช้|รับ|ต้องการ)|(?:ห้าม|อย่า)(?:ใช้|รับ)?|งด|ยกเว้น|no|not|without|except|exclude|don.t (?:use|want|accept))\s*(?:ทั้ง|either|ชำระ(?:ผ่าน|ด้วย)?)?\s*$/i.test(
         before,
       ) ||
       (negative && /^\s*(?:และ|หรือ|กับ|and|or|,)\s*$/i.test(before));
@@ -43,14 +42,15 @@ export function paymentMethods(
   };
 }
 const boundary =
-  /\s+(?=(?:ค่า|มัดจำ|แต่|ยัง|อย่า|ก่อน|ขอ(?:เก็บ|รับ|เปลี่ยน|เฉพาะ|ใช้| QR)|ไม่(?:เอา|รับ|ใช้|ต้องการ|ส่ง)|จ่าย|ชำระ|เก็บ|รับทั้ง|รับบัตร|รับผ่าน|รองรับ|หมดอายุ|ภายใน|อีก\s*\d|พรุ่งนี้|นัดรับ|ส่วนราคา|สำหรับ|ออเดอร์|order\b|by\b|tomorrow\b|using\b|via\b|within\b|for\b|only\b|but\b|without\b|don.t\b|do not\b|no\b|in \d|expires?\b|\d|(?:บัตร|QR|cards?)\b))/i;
+  /\s+(?=(?:ค่า|มัดจำ|แต่|ยัง|ห้าม|ใช้(?:บัตร| QR|คิวอาร์)|อย่า|ก่อน|ขอ(?:เก็บ|รับ|เปลี่ยน|เฉพาะ|ใช้| QR)|ไม่(?:เอา|รับ|ใช้|ต้องการ|ส่ง)|จ่าย|ชำระ|เก็บ|รับทั้ง|รับบัตร|รับผ่าน|รองรับ|หมดอายุ|ภายใน|อีก\s*\d|พรุ่งนี้|นัดรับ|ส่วนราคา|สำหรับ|ออเดอร์|order\b|by\b|tomorrow\b|using\b|via\b|within\b|for\b|only\b|but\b|without\b|don.t\b|do not\b|no\b|in \d|expires?\b|\d|(?:บัตร|QR|cards?)\b))/i;
 export function customerName(text: string) {
   const match =
     text.match(
       /(?:จาก|ให้)?\s*(?:ลูกค้า(?:ชื่อ)?|คุณ|น้อง|พี่|\b(?:customer|client)(?: named)?\s+)\s*([^,;\n!?]+)/i,
     ) ?? text.match(/(?:จาก|ให้)\s*(?!หน่อย|จ่าย|ชำระ)([\p{L}\p{M}][^,;\n!?]*)/u);
   if (!match) return;
-  const name = beforeThaiNumeral(match[1].split(boundary)[0])
+  const name = match[1]
+    .split(boundary)[0]
     .replace(/(?:ที(?:นะ)?|ให้หน่อย|หน่อย)(?:ค่ะ|ครับ|จ้า)?$/, "")
     .trim();
   return name || undefined;

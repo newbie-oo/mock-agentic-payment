@@ -1,6 +1,7 @@
 import { z } from "zod";
 import * as s from "./service";
 import { db } from "./db";
+import { recovery } from "./recovery";
 import { expired } from "./expiry";
 const empty = z.object({}).strict();
 type Context = { runId: string; m: string };
@@ -39,7 +40,11 @@ export const registry = {
       customer: z.string().min(1).max(100).optional(),
       orderId: z.string().min(1).max(100).optional(),
     }),
-    (a, c) => s.orders(a.page, true, c.m, s.size, a.before, a),
+    async (a, c) =>
+      (await s.orders(a.page, true, c.m, s.size, a.before, a)).map((o) => ({
+        ...o,
+        collectionEligibility: recovery(o, o.links[0], o.attempts[0]),
+      })),
   ),
   get_payment_history: tool(
     "Recent 12 attempts and 12 links for an order.",
@@ -75,7 +80,7 @@ export const registry = {
   regenerate_payment_link: tool(
     "Propose replacing a current link on the same order.",
     s.replaceInput,
-    (a, c) => s.propose(c.runId, "regenerate_payment_link", a, c.m),
+    (a, c) => s.propose(c.runId, "regenerate_payment_link", a, c.m, true),
   ),
   draft_payment_reminder: tool(
     "Draft a polite reminder; returns text only.",
@@ -99,7 +104,7 @@ export const registry = {
   save_notification: tool(
     "Propose storing a reminder locally after approval.",
     s.noticeInput,
-    (a, c) => s.propose(c.runId, "save_notification", a, c.m),
+    (a, c) => s.propose(c.runId, "save_notification", a, c.m, true),
   ),
 };
 export type ToolName = keyof typeof registry;

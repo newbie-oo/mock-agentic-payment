@@ -256,7 +256,7 @@ export async function checkAssistantTurns(
     const found = await agent("ช่วยเตรียมข้อความทวงลูกค้าชื่อวิชัย ยังไม่ส่ง");
     assert.match(found.summary, /คุณวิชัย.*500 บาท/);
     assert.doesNotMatch(found.summary, /นภัส|4,700/);
-    const another = await agent("สร้างลิงก์ สามพันสองร้อยบาท ค่าเช่า จากคุณวิชัย");
+    const another = await agent("สร้างลิงก์ 3,200 บาท ค่าเช่า จากคุณวิชัย");
     const second = await approve(pending(another)[0].id);
     const multi = await agent("ช่วยร่างข้อความทวงลูกค้าชื่อวิชัย ยังไม่ส่ง");
     assert.equal(multi.status, "NEEDS_INPUT");

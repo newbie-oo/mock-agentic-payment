@@ -8,6 +8,7 @@ import {
 } from "./payment-fields";
 import { isThai } from "./language";
 import { satang } from "./money";
+import { confirmationPrefix } from "./confirmation";
 
 export type PaymentTerms = {
   customer: string;
@@ -16,8 +17,7 @@ export type PaymentTerms = {
   methods: string[];
   expires: string;
 };
-const purchase =
-  /ซื้อบ้าน|(?:buy(?:ing)?|purchas(?:e|ing))\s+(?:a\s+|the\s+)?(?:house|home)\b/i;
+const purchase = /(?:ต้องการ|อยาก|จะ)ซื้อ|\b(?:buy(?:ing)?|purchas(?:e|ing))\b/i;
 const collect = /(?:รับ|เก็บ)(?:เงิน|ค่า|มัดจำ|ชำระ)|\bcollect\b/i;
 const create = /ลิงก์|เก็บ|รับชำระ|มัดจำ|payment link|\bcollect\b|invoice/i;
 interface Draft {
@@ -37,7 +37,7 @@ export function resolveDraft(
   const turns = transcript.split("\n"),
     first = turns[0],
     thai = isThai(first),
-    home = purchase.test(first),
+    home = purchase.test(first) && !collect.test(first),
     unclearPayer = !collect.test(first) && /(?:^|\s)จ่าย(?:\s|$)/.test(first);
   if (!home && !create.test(first)) return;
   // An unlabelled number following a fee and a possible payer stays
@@ -51,26 +51,22 @@ export function resolveDraft(
     shorthand && !/เลข|อ้างอิง|รหัส|โทร/.test(shorthand[1]) ? shorthand : null;
   let merchantIntent = !home && !unclearPayer;
   const d: Draft = { methods: { selected: [], denied: [] } };
-  for (const [i, t] of turns.entries()) {
-    if (i > 0 && unclearPayer) {
-      if (
-        collect.test(t) ||
-        /^(?:ใช่|ยืนยัน|ถูกต้อง|ตกลง)(?:ค่ะ|ครับ|เลย|\s|$)/.test(t)
-      ) {
-        merchantIntent = true;
-        if (candidate) {
-          if (!d.amount && !d.moneyQuestion) {
-            try {
-              d.amount = satang(candidate[2].replaceAll(",", ""));
-            } catch {
-              d.moneyQuestion = "number";
-            }
-          }
-          d.customer ??= candidate[3];
-          d.description ??= candidate[1];
-        }
-      }
+  if (candidate) {
+    d.customer = candidate[3];
+    d.description = candidate[1];
+    try {
+      d.amount = satang(candidate[2].replaceAll(",", ""));
+    } catch {
+      d.moneyQuestion = "number";
     }
+  }
+  for (const [i, t] of turns.entries()) {
+    if (
+      i > 0 &&
+      unclearPayer &&
+      (collect.test(t) || /^(?:ใช่|ยืนยัน|ถูกต้อง|ตกลง)(?:ค่ะ|ครับ|เลย|\s|$)/.test(t))
+    )
+      merchantIntent = true;
     const amount = amountUpdate(
       t,
       i > 0 && !d.amount,
@@ -80,7 +76,7 @@ export function resolveDraft(
       d.amount = "amount" in amount ? amount.amount : undefined;
       d.moneyQuestion = "question" in amount ? amount.question : undefined;
     }
-    const name = customerName(t);
+    const name = t.match(/ให้([\p{L}\p{M}]+?)จ่าย/u)?.[1] ?? customerName(t);
     if (name) d.customer = name;
     else if (
       i > 0 &&
@@ -92,18 +88,10 @@ export function resolveDraft(
       !/(?:ยืนยัน|ตกลง|ใช่|ไม่|ยัง|confirm|yes|hold)/i.test(t)
     )
       d.customer = t;
-    if (home) {
-      if (i > 0 && collect.test(t)) {
-        merchantIntent = true;
-        d.description = /มัดจำ|ค่าจอง|deposit/i.test(t)
-          ? thai
-            ? "เงินมัดจำบ้าน"
-            : "House deposit"
-          : thai
-            ? "ค่าบ้าน"
-            : "House payment";
-      }
-    } else d.description = description(t) ?? d.description;
+    if (home && collect.test(t)) {
+      merchantIntent = true;
+      d.description = description(t) ?? (thai ? "เงินมัดจำ" : "Deposit");
+    } else if (!home) d.description = description(t) ?? d.description;
     d.expires = deadline(t, started) ?? d.expires;
     d.methods = paymentMethods(t, d.methods);
   }
@@ -125,21 +113,13 @@ export function resolveDraft(
   if (home && !merchantIntent)
     return ask(
       thai
-        ? "คุณต้องการซื้อบ้านเอง หรือต้องการรับเงินมัดจำหรือค่าบ้านจากลูกค้า? หากต้องการรับเงิน กรุณาระบุชื่อลูกค้าด้วย"
+        ? "คุณต้องการ" +
+            (/บ้าน/.test(first) ? "ซื้อบ้านเอง" : "ซื้อเอง") +
+            " หรือต้องการรับเงินจากลูกค้า? หากต้องการรับเงิน กรุณาระบุชื่อลูกค้าด้วย"
         : "Are you buying the house or collecting a deposit from a customer? If collecting, please include the customer name.",
     );
-  if (unclearPayer && !merchantIntent)
-    return ask(
-      candidate
-        ? "ต้องการให้ร้านรับ" +
-            candidate[1] +
-            " " +
-            Number(candidate[2].replaceAll(",", "")).toLocaleString("th-TH") +
-            " บาท จากลูกค้าชื่อ" +
-            candidate[3] +
-            " ใช่ไหม? หากใช่ ตอบยืนยันได้เลย ลิงก์จะใช้ QR หากไม่ได้เลือกวิธีอื่น"
-        : "ต้องการให้ร้านรับเงินจากลูกค้าใช่ไหม? กรุณายืนยันชื่อลูกค้าและยอดเป็นบาท",
-    );
+  if (unclearPayer && !merchantIntent && !candidate)
+    return ask("ต้องการให้ร้านรับเงินจากลูกค้าใช่ไหม? กรุณายืนยันชื่อลูกค้าและยอดเป็นบาท");
   if (d.moneyQuestion)
     return ask(
       d.moneyQuestion === "choice"
@@ -167,13 +147,14 @@ export function resolveDraft(
         missing.join(thai ? " และ " : " and "),
     );
   }
-  return {
-    terms: {
-      customer: d.customer,
-      description: d.description,
-      amount: d.amount,
-      methods: d.methods.selected.length ? d.methods.selected : ["QR"],
-      expires: d.expires ?? new Date(started + 86400000).toISOString(),
-    },
+  const terms = {
+    customer: d.customer,
+    description: d.description,
+    amount: d.amount,
+    methods: d.methods.selected.length ? d.methods.selected : ["QR"],
+    expires: d.expires ?? new Date(started + 86400000).toISOString(),
   };
+  return unclearPayer && !merchantIntent
+    ? { reply: confirmationPrefix + JSON.stringify(terms) }
+    : { terms };
 }

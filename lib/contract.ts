@@ -1,6 +1,10 @@
+import { confirmation, question } from "./confirmation";
 import type { AgentAction, AgentRun } from "@prisma/client";
 export function actionDTO(action: AgentAction) {
-  const payload = JSON.parse(action.payload) as {
+  const stored = JSON.parse(action.payload);
+  const payload = (
+    action.kind === "Provider transcript" ? { summary: stored.summary } : stored
+  ) as {
     summary?: string;
     priorMessage?: string;
     priorReply?: string;
@@ -65,14 +69,35 @@ export function runDTO(run: AgentRun & { actions: AgentAction[] }) {
       " · " +
       (a.checkoutUrl ?? a.result?.summary ?? a.result?.id ?? a.id),
   );
+  let summary = run.summary.replace(/^NEED_INPUT\s*/, "");
+  const verified = reviewed.find(
+    (a) => a.kind === "create_payment_link" && a.checkoutUrl,
+  );
+  const thai = /[ก-๙]/.test(run.prompt);
+  const terms = confirmation(run.summary);
+  if (terms) summary = question(terms, thai);
+  if (status === "COMPLETE" && verified) {
+    summary =
+      (thai ? "สร้างลิงก์แล้ว " : "Created checkout ") + verified.checkoutUrl;
+  } else if (
+    status === "COMPLETE" &&
+    reviewed.every((a) => a.kind === "create_payment_link") &&
+    actions.some((a) => a.kind === "Rejection")
+  ) {
+    summary = thai
+      ? "ปฏิเสธข้อเสนอแล้ว จบคำขอนี้"
+      : "Proposal rejected. This request is complete.";
+  } else if (status === "COMPLETE" && reviewed.length) {
+    summary = [summary, ...auditSummary].join("\n");
+  }
   return {
     ...run,
     runId: run.id,
+    nextAction:
+      status === "NEEDS_INPUT" ? (terms ? "CONFIRM_DETAILS" : "REPLY") : null,
     deadlineAt: run.deadlineAt?.toISOString() ?? null,
     errorCode: error ? "AGENT_FAILED" : null,
-    summary: [run.summary.replace(/^NEED_INPUT\s*/, ""), ...auditSummary].join(
-      "\n",
-    ),
+    summary,
     actions,
     createdAt: run.createdAt.toISOString(),
     status,

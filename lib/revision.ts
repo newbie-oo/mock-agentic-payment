@@ -1,3 +1,4 @@
+import { confirmation, question } from "./confirmation";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { runRecord } from "./service";
@@ -38,14 +39,30 @@ async function appendTurn(
       }),
     },
   });
+  // Carry the remaining provider execution time over a human review or clarification.
+  let deadlineAt = run.deadlineAt;
+  if (deadlineAt && run.mode === "Native provider") {
+    const last = await tx.agentAction.findFirst({
+      where: { runId, kind: "Provider transcript" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { payload: true },
+    });
+    const finishedAt = last ? JSON.parse(last.payload).finishedAt : undefined;
+    // Before transcripts were recorded only the run start is available.
+    const pausedAt =
+      typeof finishedAt === "number" ? finishedAt : +run.createdAt;
+    deadlineAt = new Date(+deadlineAt + Math.max(0, Date.now() - pausedAt));
+  }
   const updated = await tx.agentRun.update({
     where: { id: runId },
     data: {
       summary: "Processing",
       responseStatus: "PROCESSING",
       prompt: transcript,
+      deadlineAt,
     },
   });
+  const terms = confirmation(run.summary);
   await tx.agentAction.create({
     data: {
       runId,
@@ -57,7 +74,10 @@ async function appendTurn(
           pending.length +
           " pending proposals",
         priorMessage: run.prompt.split("\n").at(-1),
-        priorReply: run.summary.replace(/^NEED_INPUT\s*/, ""),
+        priorReply: terms
+          ? question(terms, /[ก-๙]/.test(run.prompt))
+          : run.summary.replace(/^NEED_INPUT\s*/, ""),
+        confirmation: terms,
       }),
     },
   });

@@ -1,3 +1,4 @@
+import { recovery } from "./recovery";
 import { expired } from "./expiry";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -174,6 +175,7 @@ export async function propose(
   kind: string,
   args: unknown,
   m = scope,
+  collection = false,
 ) {
   await db.agentRun.findFirstOrThrow({ where: { id: runId, merchant: m } });
   let payload;
@@ -198,6 +200,12 @@ export async function propose(
     const activityAt = attempt?.createdAt ?? link.order.createdAt;
     if (!link.activeSlot || link.order.status !== "OPEN")
       throw Error("Order is no longer eligible");
+    if (
+      collection &&
+      recovery(link.order, link, attempt) !==
+        (kind === "save_notification" ? "REMIND" : "REPLACE")
+    )
+      throw Error("Order is ineligible for this collection action");
     payload = {
       ...data,
       orderId: link.orderId,

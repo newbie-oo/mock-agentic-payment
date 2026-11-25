@@ -293,21 +293,20 @@ export function Assistant({
           </h2>
           <p className="summary">{run.summary}</p>
           <strong>{nextStep}</strong>
-          {run.status === "NEEDS_INPUT" &&
-            run.summary.includes("ตอบยืนยันได้เลย") && (
-              <div className="actions">
-                <Button disabled={task.busy} onClick={() => send("ใช่ ตามนี้")}>
-                  ใช่ ตามนี้
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={task.busy}
-                  onClick={() => inputRef.current?.focus()}
-                >
-                  แก้ไขรายละเอียด
-                </Button>
-              </div>
-            )}
+          {run.nextAction === "CONFIRM_DETAILS" && (
+            <div className="actions">
+              <Button disabled={task.busy} onClick={() => send("ใช่ ตามนี้")}>
+                ใช่ ตามนี้
+              </Button>
+              <Button
+                variant="outline"
+                disabled={task.busy}
+                onClick={() => inputRef.current?.focus()}
+              >
+                แก้ไขรายละเอียด
+              </Button>
+            </div>
+          )}
         </section>
       )}
       {run &&

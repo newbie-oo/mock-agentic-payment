@@ -17,6 +17,7 @@ export const intentSchema = z.object({
       "clarify",
       "confirm",
       "inform",
+      "guide",
       "purchase",
       "create",
       "read",
@@ -24,7 +25,7 @@ export const intentSchema = z.object({
       "collect",
     ])
     .describe(
-      "create = explicit request to receive money, invoice or issue a link with sufficient details. Always choose create immediately for this, including informal Thai รับเงิน/ออกลิงก์, as approval follows later. confirm = a plausible but uncertain payer and merchant roles, or correction during such confirmation; never a general approval step. clarify = essential information missing. collect = explicit request to manage all outstanding orders with proposed changes. If a message requests any reminder draft, including AFTER checking the balance or when nobody is named, choose draft (balanceFirst=true for a balance check) and never read or collect. For payment status, including recent payments, choose read and inspect actual transactions. read/draft need evidence. purchase = shopper wants to buy something, including a price or deadline. inform = instructions or cancellations only.",
+      "create = explicit request to receive money, invoice or issue a link with sufficient details. Always choose create immediately for this, including informal Thai รับเงิน/ออกลิงก์, as approval follows later. confirm = a plausible but uncertain payer and merchant roles, or correction during such confirmation; never a general approval step. clarify = essential information missing. collect = explicit request to manage all outstanding orders with proposed changes. If a message requests any reminder draft, including AFTER checking the balance or when nobody is named, choose draft (balanceFirst=true for a balance check) and never read or collect. For payment status, including recent payments, choose read and inspect actual transactions. read/draft need evidence. purchase = shopper wants to buy something, including a price or deadline. guide = how-to or instructions only, even with a sample price; a customer name or approval is unnecessary. inform = cancellations or other statements.",
     ),
   message: z
     .string()
@@ -32,6 +33,21 @@ export const intentSchema = z.object({
     .optional()
     .describe(
       "For clarify or inform: a concise answer in the merchant's language",
+    ),
+  guidanceQuote: z
+    .string()
+    .trim()
+    .min(1)
+    .max(150)
+    .optional()
+    .describe(
+      "Copy the request for instructions/how-to only if present. This always takes priority over extracting example checkout details.",
+    ),
+  deferPreview: z
+    .boolean()
+    .optional()
+    .describe(
+      "True when the latest instruction explicitly puts the checkout on hold or asks for information only.",
     ),
   payerBinding: z
     .enum(["identified", "inferred"])
@@ -164,6 +180,17 @@ export function interpret(
       "ต้องการร่างข้อความถึงลูกค้าหรือออเดอร์ใด?",
       "Which customer or order should the draft be for?",
     );
+  if (
+    intent.intent === "guide" ||
+    (intent.guidanceQuote && c.latest.includes(intent.guidanceQuote))
+  ) {
+    return answer(
+      { intent: "inform" },
+      c.thai
+        ? "ไปที่ Payment Links แล้วเลือกสร้างลิงก์ กรอกชื่อลูกค้า รายการ ยอดเงิน วิธีชำระและวันหมดอายุ ตรวจรายละเอียดแล้วกดอนุมัติ จึงจะได้ลิงก์สำหรับคัดลอก"
+        : "Open Payment Links, choose Create, then enter the customer, purpose, THB amount, payment methods and expiry. Review the preview and approve it to receive a checkout URL you can copy.",
+    );
+  }
   if (intent.intent === "purchase")
     return c.turn
       ? answer(
@@ -232,6 +259,30 @@ export function interpret(
       );
     terms.description = original;
   }
+  // A revised approval preview is distinct from a correction to an unresolved
+  // payer-confirmation question. Require both changed fields in the user's reply.
+  if (
+    c.priorPreview &&
+    !c.priorTerms &&
+    !intent.deferPreview &&
+    intent.intent === "confirm" &&
+    intent.payerBinding === "identified" &&
+    terms.customer !== c.priorPreview.customer &&
+    terms.amount !== c.priorPreview.amount &&
+    c.latest.includes(terms.customer) &&
+    terms.description === c.priorPreview.description
+  ) {
+    const quoted =
+      c.latest.match(/(?<![\d.,-])\d+(?:,\d{3})*(?:\.\d{1,2})?(?![\d.,])/g) ??
+      [];
+    if (
+      quoted.some(
+        (value) => Number(value.replaceAll(",", "")) === terms.amount / 100,
+      )
+    )
+      intent.intent = "create";
+  }
+  if (intent.deferPreview) intent.intent = "confirm";
   if (c.priorPreview && !intent.expiryChanged)
     terms.expires = c.priorPreview.expires;
   terms.expires = new Date(

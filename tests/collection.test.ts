@@ -1178,3 +1178,76 @@ test("a refused method cannot silently enable an alternative and a reference can
     "clarify",
   );
 });
+
+test("offline reviewer A–D: correct a payer, clarify spoken money, exclude QR, and distinguish buying from collecting", async () => {
+  const send = async (prompt: string, runId?: string) =>
+    (await api("agent", { prompt, runId })).value;
+  const pending = (r: Awaited<ReturnType<typeof send>>) =>
+    r.actions.filter((a: { status: string }) => a.status === "PROPOSED");
+  const first = await send("ลิ้ง ค่าบัตร 6000 เอ จ่าย");
+  assert.equal(first.mode, "Deterministic demo");
+  assert.equal(first.status, "NEEDS_INPUT");
+  const change = await send("ไม่ใช่ ให้บีจ่าย 4500 บาท", first.id);
+  assert.equal(change.status, "NEEDS_INPUT");
+  assert.match(change.summary, /4,500.*บี/);
+  const a = pending(await send("ใช่ ตามนี้", first.id))[0];
+  assert.deepEqual([a.payload.customer, a.amountMinor], ["บี", 450000]);
+  const fraction = await send("สร้างลิงก์ เก้าร้อยบาทห้าสิบสตางค์ ค่าพิมพ์ จากคุณบัว");
+  assert.equal(fraction.status, "NEEDS_INPUT");
+  assert.equal(pending(fraction).length, 0);
+  const card = pending(
+    await send("สร้างลิงก์ 650 บาท ค่าพิมพ์ จากคุณบัว ใช้บัตรเท่านั้น ห้ามใช้ QR"),
+  )[0];
+  assert.deepEqual(
+    [card.payload.customer, card.amountMinor, card.payload.methods],
+    ["บัว", 65000, ["CARD"]],
+  );
+  const opening = await send("ต้องการซื้อรถ ภายใน 2 ชม ราคา 5000");
+  assert.equal(opening.status, "NEEDS_INPUT");
+  const buyer = await send("ซื้อเอง", opening.id);
+  assert.equal(buyer.status, "COMPLETE");
+  assert.equal(pending(buyer).length, 0);
+  const merchant = pending(
+    await send("ผมเป็นร้านค้า ต้องการรับเงินมัดจำจากลูกค้าชื่อวิชัย 500 บาท สำหรับซื้อบ้าน"),
+  )[0];
+  assert.deepEqual(
+    [merchant.amountMinor, merchant.payload.customer],
+    [50000, "วิชัย"],
+  );
+});
+
+test("the native interpretation can edit a complete reviewed preview without repeating a payer question", async () => {
+  const { interpret } = await import("../lib/merchant-intent");
+  const snapshot = {
+    customer: "A",
+    amount: 1223300,
+    currency: "THB" as const,
+    methods: ["QR" as const],
+    description: "ค่า gas",
+    expires: new Date(Date.now() + 86400000).toISOString(),
+  };
+  const decision = {
+    intent: "confirm",
+    payerBinding: "identified",
+    terms: { ...snapshot, customer: "บี", amount: 450000 },
+  };
+  const ctx = {
+    latest: "แก้ไขยอดเป็น 4500 บาท ลูกค้าชื่อบี",
+    thai: true,
+    turn: 1,
+    started: new Date(),
+    history: [],
+    priorTerms: null,
+    priorPreview: snapshot,
+  };
+  assert.equal(interpret(decision, ctx).intent.intent, "create");
+  assert.equal(
+    interpret({ ...decision, deferPreview: true }, ctx).intent.intent,
+    "confirm",
+  );
+  assert.equal(
+    interpret(decision, { ...ctx, priorTerms: snapshot, priorPreview: null })
+      .intent.intent,
+    "confirm",
+  );
+});

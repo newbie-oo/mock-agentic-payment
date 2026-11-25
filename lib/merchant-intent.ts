@@ -7,7 +7,11 @@ import {
   validateQuotedMoney,
 } from "./money";
 import { priorPurpose, type ChatMessage } from "./native-history";
-import { confirmationPrefix, type Confirmation } from "./confirmation";
+import {
+  confirmationPrefix,
+  heldPrefix,
+  type Confirmation,
+} from "./confirmation";
 
 // Only the provider interprets free-form merchant language. This first tool
 // selects permissions for the current turn. It has no business side effects.
@@ -47,7 +51,7 @@ export const intentSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "True when the latest instruction explicitly puts the checkout on hold or asks for information only.",
+      "True when the latest instruction holds a checkout. For an edit or recap of an existing preview also include the full updated terms. Pure how-to uses guide.",
     ),
   payerBinding: z
     .enum(["identified", "inferred"])
@@ -112,7 +116,7 @@ export const intentSchema = z.object({
   terms: createInput
     .optional()
     .describe(
-      "For confirm/create: the full latest checkout terms only, removing honorifics from personal names; retain company names",
+      "For confirm/create or a deferred recap: the full latest checkout terms only, removing honorifics from personal names; retain company names",
     ),
 });
 export const intentTool = {
@@ -125,6 +129,15 @@ export const intentTool = {
       io: "input",
       target: "draft-7",
     }),
+  },
+};
+export const heldTool = {
+  type: "function",
+  function: {
+    name: "read_held_terms",
+    description:
+      "Return the complete checkout details for a read-only recap. Apply only the merchant’s explicit edits to the previous terms.",
+    parameters: z.toJSONSchema(createInput, { io: "input", target: "draft-7" }),
   },
 };
 export type MerchantIntent = z.output<typeof intentSchema>;
@@ -150,11 +163,12 @@ type Context = {
   history: ChatMessage[];
   priorTerms: Confirmation | null;
   priorPreview: Confirmation | null;
+  heldTerms?: Confirmation | null;
 };
 export function interpret(
   args: unknown,
   c: Context,
-): { intent: MerchantIntent; summary?: string } {
+): { intent: MerchantIntent; summary?: string; needsHeldTerms?: boolean } {
   const answer = (intent: MerchantIntent, summary: string) => ({
     intent,
     summary,
@@ -167,7 +181,11 @@ export function interpret(
       "Please confirm a positive THB amount within range with at most two decimals.",
     );
   const raw = (args as { intent?: string } | null)?.intent;
-  if (raw === "create" || raw === "confirm") {
+  if (
+    raw === "create" ||
+    raw === "confirm" ||
+    (args as { deferPreview?: boolean } | null)?.deferPreview
+  ) {
     try {
       validateQuotedMoney(c.latest);
     } catch {
@@ -202,6 +220,20 @@ export function interpret(
         ? "ไปที่ Payment Links แล้วเลือกสร้างลิงก์ กรอกชื่อลูกค้า รายการ ยอดเงิน วิธีชำระและวันหมดอายุ ตรวจรายละเอียดแล้วกดอนุมัติ จึงจะได้ลิงก์สำหรับคัดลอก"
         : "Open Payment Links, choose Create, then enter the customer, purpose, THB amount, payment methods and expiry. Review the preview and approve it to receive a checkout URL you can copy.",
     );
+  }
+  const resumeQuote =
+    intent.requestQuote && c.latest.includes(intent.requestQuote);
+  const holding = Boolean(
+    c.priorPreview &&
+    (intent.deferPreview ||
+      (c.heldTerms &&
+        !resumeQuote &&
+        ["confirm", "create"].includes(intent.intent))),
+  );
+
+  if (holding) {
+    if (!intent.terms) return { intent, needsHeldTerms: true };
+    intent.intent = "confirm";
   }
   if (intent.intent === "purchase")
     return c.turn
@@ -283,6 +315,31 @@ export function interpret(
     )
       terms.description = c.priorPreview.description;
   }
+  if (holding && c.priorPreview) {
+    if (
+      terms.customer !== c.priorPreview.customer &&
+      !c.latest.includes(terms.customer)
+    )
+      return ask(
+        "ต้องการให้ระบุชื่อลูกค้าคนใดในรายการที่พักไว้?",
+        "Which customer should appear in the held details?",
+      );
+    const quoted = Array.from(
+      c.latest.matchAll(
+        /(?:฿|\bTHB)\s*([\d,]+(?:\.\d+)?)|([\d,]+(?:\.\d+)?)\s*(?:บาท|baht\b)/gi,
+      ),
+      (m) => m[1] ?? m[2],
+    );
+    if (
+      quoted.length === 1 &&
+      !/[+%]/.test(c.latest) &&
+      terms.amount !== satang(quoted[0].replaceAll(",", ""))
+    )
+      return ask(
+        "กรุณายืนยันยอดเงินที่ต้องการทวนเป็นบาท",
+        "Please confirm the THB amount for the recap.",
+      );
+  }
   // A revised approval preview is distinct from a correction to an unresolved
   // payer-confirmation question. Require both changed fields in the user's reply.
   if (
@@ -315,6 +372,7 @@ export function interpret(
       "ข้อเสนอหมดอายุแล้ว ต้องการให้ลิงก์ใหม่หมดอายุเมื่อใด?",
       "The proposed expiry has passed. What expiry should I use?",
     );
+  if (holding) return answer(intent, heldPrefix + JSON.stringify(terms));
   if (
     intent.intent === "confirm" ||
     (c.priorTerms && !sameTerms(terms, c.priorTerms))

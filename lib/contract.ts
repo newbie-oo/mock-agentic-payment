@@ -1,4 +1,4 @@
-import { confirmation, question } from "./confirmation";
+import { confirmation, heldPrefix, visibleSummary } from "./confirmation";
 import type { AgentAction, AgentRun } from "@prisma/client";
 export function actionDTO(action: AgentAction) {
   const stored = JSON.parse(action.payload);
@@ -69,13 +69,13 @@ export function runDTO(run: AgentRun & { actions: AgentAction[] }) {
       " · " +
       (a.checkoutUrl ?? a.result?.summary ?? a.result?.id ?? a.id),
   );
-  let summary = run.summary.replace(/^NEED_INPUT\s*/, "");
   const verified = reviewed.find(
     (a) => a.kind === "create_payment_link" && a.checkoutUrl,
   );
   const thai = /[ก-๙]/.test(run.prompt);
   const terms = confirmation(run.summary);
-  if (terms) summary = question(terms, thai);
+  const held = confirmation(run.summary, heldPrefix);
+  let summary = visibleSummary(run.summary, thai);
   if (status === "COMPLETE" && verified) {
     summary =
       (thai ? "สร้างลิงก์แล้ว " : "Created checkout ") + verified.checkoutUrl;
@@ -94,7 +94,13 @@ export function runDTO(run: AgentRun & { actions: AgentAction[] }) {
     ...run,
     runId: run.id,
     nextAction:
-      status === "NEEDS_INPUT" ? (terms ? "CONFIRM_DETAILS" : "REPLY") : null,
+      status === "NEEDS_INPUT"
+        ? held
+          ? "PREPARE_PREVIEW"
+          : terms
+            ? "CONFIRM_DETAILS"
+            : "REPLY"
+        : null,
     deadlineAt: run.deadlineAt?.toISOString() ?? null,
     errorCode: error ? "AGENT_FAILED" : null,
     summary,

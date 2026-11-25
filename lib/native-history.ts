@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { confirmation, question } from "./confirmation";
+import { visibleSummary } from "./confirmation";
 export type ChatMessage = Record<string, unknown>;
 // Persist only role, visible content and function-call fields, after schema validation.
 export async function nativeHistory(runId: string, prompt: string) {
@@ -32,6 +32,7 @@ export async function nativeHistory(runId: string, prompt: string) {
   return {
     history,
     priorPreview: follow ? JSON.parse(follow.payload).priorPreview : null,
+    heldTerms: follow ? JSON.parse(follow.payload).heldTerms : null,
     priorTerms: follow ? JSON.parse(follow.payload).confirmation : null,
     turn: prompt.split("\n").length - 1,
   };
@@ -43,10 +44,7 @@ export async function recordReply(
   summary: string,
   thai: boolean,
 ) {
-  const terms = confirmation(summary);
-  const visible = terms
-    ? question(terms, thai)
-    : summary.replace(/^NEED_INPUT\s*/, "");
+  const visible = visibleSummary(summary, thai);
   await db.agentAction.create({
     data: {
       runId,

@@ -61,3 +61,11 @@ The individual gates and remaining limitations for cards 1–9 are in [the nativ
 | Unverified | Final complete native replay and human presentation | The coordinator owns the independent repeat after the provider rate limit. No human presentation time was measured. |
 
 [Sanitized receipts, commands and issue-level acceptance](evidence/native-agent.md)
+
+## Held checkout recap (card 5)
+
+Replayed the provider's recorded intent from QA run `cmwvjco00000dlhz9oiysdqck`. The previous build accepted the hold, withdrew A’s ฿12,233 preview and returned COMPLETE with a promise to recap. Its inform path returned before reading the revised terms.
+
+The HTTP and mobile Chrome regression exercises a read-only recap for บี, ฿4,500, ค่า gas, QR and the original Bangkok expiry. After reload the same run accepts a reply or an explicit request to prepare a preview. The prior action remains rejected. The database contains zero orders, links, attempts and notifications up to approval. Approval and retry return the same link and leave one order, one link, zero attempts and zero notifications. The unit regression covers cancellation, instructions-only, unsupported terms and a held acknowledgement.
+
+Run `npm run build`, then `CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' node scripts/held-recap-smoke.mjs` for the recorded native protocol fixture. Add `--offline` for the deterministic adapter. Both browser checks passed against disposable SQLite files. The independent live check uses the same command with `--live` when QA has reserved the provider.

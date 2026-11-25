@@ -1,3 +1,5 @@
+import { heldPrefix, prepareHeld } from "./confirmation";
+import { createInput } from "./proposal-input";
 import { normalize, scopeReply, readIntent, isThai } from "./language";
 import {
   resolveDraft,
@@ -155,7 +157,54 @@ export async function offline(
   let summary: string;
   const prompt = normalize(transcript);
   const latestText = normalize(latest);
+  const recap =
+    /(?:ทวน|recap|review the details)/i.test(latestText) &&
+    /(?:ยังไม่|อย่าเพิ่ง|พัก|hold|do not|don.t|before preparing)/i.test(latestText);
+  const resume =
+    [prepareHeld, "Prepare this preview"].includes(latest) ||
+    /^(?:ช่วย)?เตรียมข้อเสนอ(?:ได้เลย|เลย|ให้หน่อย)?$|^(?:please )?prepare (?:the |a )?preview(?: now)?[.!]?$/i.test(
+      latestText,
+    );
   const clarification = scopeReply(latestText, prompt);
+  if (previous) {
+    const follow = await db.agentAction.findFirst({
+      where: {
+        runId: context.runId,
+        run: { merchant: context.m },
+        kind: "Follow-up",
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { payload: true },
+    });
+    const state = follow && JSON.parse(follow.payload);
+    if (resume && state?.heldTerms) {
+      const proposal = await dispatch(
+        "create_payment_link",
+        createInput.parse(state.heldTerms),
+        context,
+      );
+      if (!proposal.success)
+        throw Error("Tool failed to prepare the reviewed checkout");
+      return isThai(transcript)
+        ? "ตรวจข้อเสนอแล้วกดอนุมัติเพื่อสร้างลิงก์"
+        : "Review the proposal and approve it to create the link.";
+    }
+    if (
+      (recap && state?.priorPreview) ||
+      (state?.heldTerms && !clarification)
+    ) {
+      const draft = resolveDraft(prompt, +started);
+      if (draft?.terms)
+        return heldPrefix + JSON.stringify(createInput.parse(draft.terms));
+      return (
+        draft?.reply ??
+        "NEED_INPUT " +
+          (isThai(latest)
+            ? "ต้องการแก้ไขข้อมูลใดก่อนทวนรายการ?"
+            : "Which details should I revise for the recap?")
+      );
+    }
+  }
   const timeAnswer =
     previous && /^(?:อีก|ภายใน|in|within)\s*\d/i.test(latestText);
   if (clarification && !timeAnswer) {

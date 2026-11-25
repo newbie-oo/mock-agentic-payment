@@ -1,3 +1,4 @@
+import { heldPrefix } from "./confirmation";
 import { claimTurn } from "./revision";
 import { offline } from "./offline-agent";
 import { z } from "zod";
@@ -87,7 +88,8 @@ export async function agent(
       summary,
       responseStatus: failed
         ? "FAILED"
-        : summary.startsWith("CONFIRM_INPUT") ||
+        : summary.startsWith(heldPrefix) ||
+            summary.startsWith("CONFIRM_INPUT") ||
             summary.startsWith("NEED_INPUT") ||
             summary.startsWith("กรุณาระบุ")
           ? "NEEDS_INPUT"

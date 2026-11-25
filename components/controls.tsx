@@ -1,5 +1,6 @@
 "use client";
 import { satang } from "@/lib/money";
+import { prepareHeld } from "../lib/confirmation";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { ActionDTO as AgentAction, RunDTO as Run } from "@/lib/contract";
@@ -285,14 +286,32 @@ export function Assistant({
           <strong>คุณ</strong>
           <p>{run.prompt.split("\n").at(-1)}</p>
           <h2 ref={resultHeading} tabIndex={-1}>
-            {run.status === "NEEDS_INPUT"
+            {run.nextAction === "PREPARE_PREVIEW"
               ? /[ก-๙]/.test(run.prompt)
-                ? "ขอข้อมูลเพิ่มเติม"
-                : "Clarification needed"
-              : "คำตอบจาก PayPilot"}
+                ? "ทวนรายละเอียด"
+                : "Checkout recap"
+              : run.status === "NEEDS_INPUT"
+                ? /[ก-๙]/.test(run.prompt)
+                  ? "ขอข้อมูลเพิ่มเติม"
+                  : "Clarification needed"
+                : "คำตอบจาก PayPilot"}
           </h2>
           <p className="summary">{run.summary}</p>
           <strong>{nextStep}</strong>
+          {run.nextAction === "PREPARE_PREVIEW" && (
+            <Button
+              disabled={task.busy}
+              onClick={() =>
+                send(
+                  /[ก-๙]/.test(run.prompt)
+                    ? prepareHeld
+                    : "Prepare this preview",
+                )
+              }
+            >
+              {/[ก-๙]/.test(run.prompt) ? prepareHeld : "Prepare this preview"}
+            </Button>
+          )}
           {run.nextAction === "CONFIRM_DETAILS" && (
             <div className="actions">
               <Button disabled={task.busy} onClick={() => send("ใช่ ตามนี้")}>

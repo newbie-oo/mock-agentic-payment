@@ -1251,3 +1251,85 @@ test("the native interpretation can edit a complete reviewed preview without rep
     "confirm",
   );
 });
+
+test("held recap uses grounded terms, leaves the thread open, and keeps guides and cancellation terminal", async () => {
+  const { interpret } = await import("../lib/merchant-intent");
+  const { heldPrefix, visibleSummary } = await import("../lib/confirmation");
+  const snapshot = {
+    amount: 1223300,
+    customer: "A",
+    description: "ค่า gas",
+    methods: ["QR" as const],
+    currency: "THB" as const,
+    expires: new Date(Date.now() + 86400000).toISOString(),
+  };
+  const ctx = {
+    latest: "แก้ไขยอดเป็น 4500 บาท ลูกค้าชื่อบี ขอทวนข้อมูลก่อน ยังไม่ต้องเตรียมข้อเสนอ",
+    thai: true,
+    turn: 1,
+    started: new Date(),
+    history: [],
+    priorTerms: null,
+    priorPreview: snapshot,
+  };
+  const hold = {
+    intent: "inform",
+    deferPreview: true,
+    message: "จะทวนข้อมูลที่แก้ไขให้ก่อน โดยยังไม่จัดเตรียมข้อเสนอ",
+  };
+  assert.equal(interpret(hold, ctx).needsHeldTerms, true);
+  const revised = { ...snapshot, amount: 450000, customer: "บี" };
+  const read = interpret({ ...hold, terms: revised }, ctx);
+  assert.ok(read.summary?.startsWith(heldPrefix));
+  assert.match(
+    visibleSummary(read.summary!, true),
+    /บี · ค่า gas · 4,500 บาท · QR/,
+  );
+  assert.equal(
+    interpret({ ...hold, terms: { ...revised, customer: "someone else" } }, ctx)
+      .intent.intent,
+    "clarify",
+  );
+  assert.equal(
+    interpret({ ...hold, terms: snapshot }, ctx).intent.intent,
+    "clarify",
+  );
+  assert.equal(
+    interpret({ intent: "guide", deferPreview: true }, ctx).intent.intent,
+    "inform",
+  );
+  assert.ok(
+    interpret(
+      { intent: "create", terms: revised },
+      { ...ctx, heldTerms: revised, priorPreview: revised, latest: "thanks" },
+    ).summary?.startsWith(heldPrefix),
+  );
+  const open = (await api("agent", { prompt: "ลิ้งรับเงิน 12233 ลูกค้า A ค่า gas" }))
+    .value;
+  const held = (await api("agent", { runId: open.id, prompt: ctx.latest }))
+    .value;
+  assert.equal(held.nextAction, "PREPARE_PREVIEW");
+  const acknowledgement = (
+    await api("agent", { runId: open.id, prompt: "ขอบคุณ" })
+  ).value;
+  assert.equal(acknowledgement.nextAction, "PREPARE_PREVIEW");
+  assert.ok(
+    !acknowledgement.actions.some(
+      (a: { status: string }) => a.status === "PROPOSED",
+    ),
+  );
+  assert.equal(
+    held.actions.filter((a: { status: string }) => a.status === "PROPOSED")
+      .length,
+    0,
+  );
+  const cancelled = (await api("agent", { runId: open.id, prompt: "ยกเลิก" }))
+    .value;
+  assert.equal(cancelled.status, "COMPLETE");
+  assert.equal(cancelled.nextAction, null);
+  assert.equal(
+    (await api("agent", { runId: open.id, prompt: "เตรียมข้อเสนอจากข้อมูลนี้" }))
+      .code,
+    409,
+  );
+});

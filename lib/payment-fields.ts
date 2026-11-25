@@ -42,7 +42,7 @@ export function paymentMethods(
   };
 }
 const boundary =
-  /\s+(?=(?:ค่า|มัดจำ|แต่|ยัง|ห้าม|ใช้(?:บัตร| QR|คิวอาร์)|อย่า|ก่อน|ขอ(?:เก็บ|รับ|เปลี่ยน|เฉพาะ|ใช้| QR)|ไม่(?:เอา|รับ|ใช้|ต้องการ|ส่ง)|จ่าย|ชำระ|เก็บ|รับทั้ง|รับบัตร|รับผ่าน|รองรับ|หมดอายุ|ภายใน|อีก\s*\d|พรุ่งนี้|นัดรับ|ส่วนราคา|สำหรับ|ออเดอร์|order\b|by\b|tomorrow\b|using\b|via\b|within\b|for\b|only\b|but\b|without\b|don.t\b|do not\b|no\b|in \d|expires?\b|\d|(?:บัตร|QR|cards?)\b))/i;
+  /\s+(?=(?:ค่า|มัดจำ|แต่|ยัง|ห้าม|ใช้(?:บัตร| QR|คิวอาร์)|อย่า|ก่อน|ขอ(?:ทวน|เก็บ|รับ|เปลี่ยน|เฉพาะ|ใช้| QR)|ไม่(?:เอา|รับ|ใช้|ต้องการ|ส่ง)|จ่าย|ชำระ|เก็บ|รับทั้ง|รับบัตร|รับผ่าน|รองรับ|หมดอายุ|ภายใน|อีก\s*\d|พรุ่งนี้|นัดรับ|ส่วนราคา|สำหรับ|ออเดอร์|order\b|by\b|tomorrow\b|using\b|via\b|within\b|for\b|only\b|but\b|without\b|don.t\b|do not\b|no\b|in \d|expires?\b|\d|(?:บัตร|QR|cards?)\b))/i;
 export function customerName(text: string) {
   const match =
     text.match(

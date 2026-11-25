@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id          String    @id @default(cuid())
+  merchant    String
+  customer    String
+  description String
+  amount      Int
+  currency    String    @default("THB")
+  status      String    @default("OPEN")
+  createdAt   DateTime  @default(now())
+  links       Link[]
+  attempts    Attempt[]
+
+  @@index([merchant, status, createdAt])
+  @@index([merchant, createdAt])
+}
+
+model Link {
+  id         String    @id @default(uuid())
+  orderId    String
+  order      Order     @relation(fields: [orderId], references: [id])
+  methods    String
+  expires    DateTime
+  activeSlot String?   @unique
+  createdAt  DateTime  @default(now())
+  attempts   Attempt[]
+
+  @@index([orderId, createdAt])
+}
+
+model Attempt {
+  id         String   @id @default(cuid())
+  merchant   String
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  linkId     String
+  link       Link     @relation(fields: [linkId], references: [id])
+  method     String
+  status     String
+  requestId  String   @unique
+  settlement String?  @unique
+  createdAt  DateTime @default(now())
+
+  @@index([merchant, status, createdAt])
+  @@index([merchant, createdAt])
+  @@index([orderId, createdAt])
+  @@index([linkId, createdAt])
+}
+
+model AgentRun {
+  id        String        @id @default(cuid())
+  merchant  String
+  prompt    String
+  mode      String
+  summary   String        @default("")
+  createdAt DateTime      @default(now())
+  actions   AgentAction[]
+
+  @@index([merchant, createdAt])
+}
+
+model AgentAction {
+  id        String   @id @default(cuid())
+  runId     String
+  run       AgentRun @relation(fields: [runId], references: [id])
+  kind      String
+  payload   String
+  status    String
+  result    String?
+  createdAt DateTime @default(now())
+
+  @@index([runId, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  merchant  String
+  orderId   String
+  actionId  String   @unique
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([merchant, orderId, createdAt])
+}

@@ -119,6 +119,7 @@ try {
     await page.getByText("Paid in full").waitFor();
     await page.goto(base);
     assert.equal((await revenue()) - before, 5000);
+    await page.getByRole("img", { name: /Daily revenue:.*฿5,000/ }).waitFor();
     console.log(
       JSON.stringify({
         runId: run.id,
@@ -137,6 +138,38 @@ try {
       () => document.documentElement.scrollWidth <= window.innerWidth,
       undefined,
       { timeout: 5000 },
+    );
+    for (const path of ["/", "/transactions", "/links", "/assistant"]) {
+      const mobile = await browser.newPage({
+        viewport: { width: 390, height: 844 },
+      });
+      await mobile.goto(base + path);
+      await mobile.waitForLoadState("networkidle");
+      await mobile.waitForFunction(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+        undefined,
+        { timeout: 5000 },
+      );
+      await mobile.close();
+    }
+    await page.goto(base + "/links");
+    await page.getByRole("button", { name: "Create payment link" }).click();
+    const amount = page.getByRole("spinbutton", { name: "Amount" });
+    await amount.fill("21474836.48");
+    assert.ok(
+      await amount.evaluate(
+        (el: HTMLInputElement) => el.validity.rangeOverflow,
+      ),
+    );
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"], {
+        origin: base,
+      });
+    await page.getByRole("button", { name: "Copy link" }).first().click();
+    assert.match(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      /\/pay\//,
     );
     for (const prompt of [
       "สร้างลิงก์รับเงินค่าออกแบบ 5,000 บาท ให้ลูกค้าบริษัท แสงเช้า รับทั้งบัตรและ QR",
@@ -171,6 +204,68 @@ try {
         }),
       );
     }
+    // Drop only the first reply after the server commits; the browser must replay the same attempt.
+    const p = await page.request.post(base + "/api/proposal", {
+      data: {
+        kind: "create_payment_link",
+        args: {
+          customer: "Retry QA",
+          description: "Lost response",
+          amount: 500000,
+        },
+      },
+    });
+    const approved = await page.request.post(base + "/api/decision", {
+      data: { actionId: (await p.json()).id, approve: true },
+    });
+    const link = (await approved.json()).result;
+    const initial = await (
+      await page.request.get(base + "/api/dashboard")
+    ).json();
+    for (const status of ["PENDING", "FAILED", "SUCCESS"]) {
+      await page.goto(base + "/pay/" + link.id);
+      await page.getByLabel("Sandbox outcome").selectOption(status);
+      let requestId = "";
+      await page.route(
+        "**/api/checkout",
+        async (route) => {
+          requestId = route.request().postDataJSON().requestId;
+          assert.equal((await route.fetch()).status(), 200);
+          await route.abort("failed");
+        },
+        { times: 1 },
+      );
+      await page.getByRole("button", { name: "Simulate checkout" }).click();
+      const retry = page.getByRole("button", { name: "Retry same attempt" });
+      await retry.waitFor();
+      if (status === "PENDING") {
+        await page.reload();
+        await retry.waitFor();
+      }
+      const result = page.waitForResponse((r) =>
+        r.url().endsWith("/api/checkout"),
+      );
+      await retry.click();
+      const attempt = await (await result).json();
+      assert.equal(attempt.requestId, requestId);
+      const actual = await (
+        await page.request.get(base + "/api/transactions")
+      ).json();
+      assert.equal(
+        actual.filter(
+          (a: { linkId: string; status: string }) =>
+            a.linkId === link.id && a.status === status,
+        ).length,
+        1,
+      );
+    }
+    const final = await (
+      await page.request.get(base + "/api/dashboard")
+    ).json();
+    const sum = (rows: { total: number }[]) =>
+      rows.reduce((n, r) => n + r.total, 0);
+    assert.equal(sum(final.trend) - sum(initial.trend), 500000);
+    assert.equal(final.denominator - initial.denominator, 3);
     console.log(
       "Browser verified two reminders, replacement checkout, Bangkok creation, single ฿5,000 settlement and mobile overview.",
     );

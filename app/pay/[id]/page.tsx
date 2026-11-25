@@ -1,3 +1,4 @@
+import { expired } from "@/lib/expiry";
 import { notFound } from "next/navigation";
 import { db, merchant } from "@/lib/db";
 import { baht, localDate } from "@/lib/display";
@@ -17,7 +18,7 @@ export default async function Page({
       ? "Paid in full"
       : !l.activeSlot
         ? "Link replaced"
-        : +l.expires <= Date.now()
+        : expired(l.expires)
           ? "Link expired"
           : "";
   return (

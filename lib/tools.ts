@@ -33,8 +33,8 @@ export const registry = {
   ),
   list_unpaid_payments: tool(
     "Page of 12 open orders, latest link and attempt.",
-    s.pageInput,
-    (a, c) => s.orders(a.page, true, c.m),
+    s.pageInput.extend({ before: s.cursorInput.optional() }),
+    (a, c) => s.orders(a.page, true, c.m, s.size, a.before),
   ),
   get_payment_history: tool(
     "Recent 12 attempts and 12 links for an order.",
@@ -51,7 +51,13 @@ export const registry = {
   get_payment_methods: tool(
     "Enabled methods for checkout.",
     s.linkInput,
-    async (a, c) => (await s.getLink(a.linkId, c.m)).methods.split(","),
+    async (a, c) =>
+      (
+        await db.link.findFirstOrThrow({
+          where: { id: a.linkId, order: { merchant: c.m } },
+          select: { methods: true },
+        })
+      ).methods.split(","),
   ),
   get_payment_link: tool("Read checkout and order.", s.linkInput, (a, c) =>
     s.getLink(a.linkId, c.m),

@@ -41,8 +41,8 @@ export default async function Home() {
           <Sparkles size={24} />
           <h2>Collection assistant</h2>
           <p>
-            {m.customers} customers have {baht(m.pending)} outstanding across{" "}
-            {m.open} open orders.
+            {baht(m.pending)} outstanding across {m.open} open orders and{" "}
+            {m.customers} distinct customer names.
           </p>
           <Link className="button light" href="/assistant">
             Review collections <ArrowUpRight size={16} />

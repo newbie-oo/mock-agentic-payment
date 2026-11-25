@@ -122,10 +122,14 @@ export async function POST(req: Request, { params }: Context) {
     switch ((await params).operation) {
       case "agent": {
         const a = z
-          .object({ prompt: z.string(), runId: id.optional() })
+          .object({
+            prompt: z.string(),
+            runId: id.optional(),
+            continueRunId: id.optional(),
+          })
           .strict()
           .parse(data);
-        const r = runDTO(await agent(a.prompt, a.runId));
+        const r = runDTO(await agent(a.prompt, a.runId, a.continueRunId));
         return json(r, r.error ? 502 : a.runId ? 200 : 201);
       }
       case "checkout":
@@ -143,9 +147,19 @@ export async function POST(req: Request, { params }: Context) {
           .object({ runId: id, approve: z.boolean() })
           .strict()
           .parse(data);
-        const run = await inspectRun(a.runId);
+        const run = await db.agentRun.findFirstOrThrow({
+          where: { id: a.runId, merchant },
+          select: {
+            id: true,
+            actions: {
+              where: { status: { not: "EVENT" } },
+              select: { id: true },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            },
+          },
+        });
         const outcomes = [];
-        for (const p of run.actions.filter((a) => a.status !== "EVENT")) {
+        for (const p of run.actions) {
           try {
             outcomes.push(actionDTO(await decide(p.id, a.approve)));
           } catch {

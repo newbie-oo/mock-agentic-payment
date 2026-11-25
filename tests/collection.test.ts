@@ -687,3 +687,155 @@ test("HTTP company names and every requested method survive approval and link re
     assert.deepEqual(link.methods.split(",").sort(), ["CARD", "QR"]);
   }
 });
+
+test("native run persists turns, tool budget and deadline across clarifications", async (t) => {
+  process.env.OPENAI_API_KEY = crypto.randomUUID();
+  let stage = 0;
+  const call = {
+    id: "metric",
+    type: "function",
+    function: { name: "get_dashboard_metrics", arguments: "{}" },
+  };
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, init: { body: string }) => {
+      const body = JSON.parse(init.body);
+      const message =
+        body.messages.at(-1).role === "tool"
+          ? { content: "NEED_INPUT Which period?" }
+          : {
+              content: null,
+              tool_calls: Array.from(
+                { length: stage === 0 ? 20 : 13 },
+                (_, i) => ({ ...call, id: "metric" + i }),
+              ),
+            };
+      return Response.json({ choices: [{ message }] });
+    },
+  );
+  try {
+    const first = (await api("agent", { prompt: "Read metrics" })).value;
+    assert.equal(first.status, "NEEDS_INPUT");
+    assert.equal(first.providerCalls, 20);
+    assert.equal(first.providerTurns, 2);
+    stage++;
+    const next = await api("agent", { runId: first.id, prompt: "Last month" });
+    assert.equal(next.code, 502);
+    assert.equal(next.value.providerCalls, 20);
+    assert.equal(next.value.deadlineAt, first.deadlineAt);
+    assert.match(next.value.error, /budget/);
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+test("native tool failure must recover a verified read before claiming completion", async (t) => {
+  process.env.OPENAI_API_KEY = crypto.randomUUID();
+  let recover = false;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, opts: { body: string }) => {
+      const messages = JSON.parse(opts.body).messages;
+      const n = messages.filter(
+        (m: { role: string }) => m.role === "tool",
+      ).length;
+      const message =
+        n === 0 || (n === 1 && recover)
+          ? {
+              content: null,
+              tool_calls: [
+                {
+                  id: "lookup" + n,
+                  type: "function",
+                  function: {
+                    name: "get_dashboard_metrics",
+                    arguments: n === 0 ? '{"bad":true}' : "{}",
+                  },
+                },
+              ],
+            }
+          : { content: "Review complete" };
+      return Response.json({ choices: [{ message }] });
+    },
+  );
+  try {
+    assert.equal(
+      (await api("agent", { prompt: "Read dashboard metrics" })).value.status,
+      "FAILED",
+    );
+    recover = true;
+    const done = (await api("agent", { prompt: "Read dashboard metrics" }))
+      .value;
+    assert.equal(done.status, "COMPLETE");
+    assert.ok(
+      done.actions.some((a: { kind: string }) => a.kind === "Tool error"),
+    );
+    assert.ok(
+      done.actions.some(
+        (a: { kind: string }) => a.kind === "get_dashboard_metrics",
+      ),
+    );
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+test("latest activity determines collection eligibility, distinct names and stable continuation", async (t) => {
+  const now = Date.parse("2026-11-25T03:00:00Z");
+  t.mock.method(Date, "now", () => now);
+  // Isolate this scenario inside the disposable test database.
+  await db.order.updateMany({
+    where: { merchant, status: "OPEN" },
+    data: { status: "PAID" },
+  });
+  for (let i = 0; i < 61; i++) {
+    const at = new Date(now - (i < 2 ? 3 * 86400000 : 60000));
+    const order = await db.order.create({
+      data: {
+        merchant,
+        description: "Scenario " + i,
+        customer: "Same name",
+        amount: 100,
+        createdAt: at,
+      },
+    });
+    const link = await db.link.create({
+      data: {
+        orderId: order.id,
+        activeSlot: order.id,
+        methods: "QR",
+        expires: new Date(now + 86400000),
+        createdAt: at,
+      },
+    });
+    if (i < 2)
+      await db.attempt.create({
+        data: {
+          merchant,
+          orderId: order.id,
+          linkId: link.id,
+          method: "QR",
+          status: "PENDING",
+          requestId: crypto.randomUUID(),
+          createdAt: new Date(now - (i === 0 ? 86400000 : 5)),
+        },
+      });
+  }
+  const first = (await api("agent", { prompt: hero })).value;
+  assert.match(first.summary, /1 distinct customer names/);
+  assert.match(first.summary, /Reviewed 60 open orders/);
+  const second = (await api("agent", { prompt: hero, continueRunId: first.id }))
+    .value;
+  assert.match(second.summary, /Reviewed 1 open orders/);
+  const proposed = [...first.actions, ...second.actions].filter(
+    (a) => a.status === "PROPOSED",
+  );
+  assert.equal(proposed.length, 1);
+  assert.equal(proposed[0].payload.description, "Scenario 0");
+  assert.equal(
+    Date.parse(proposed[0].payload.evidence.activityAt),
+    now - 86400000,
+  );
+  assert.equal(proposed[0].payload.evidence.outcome, "PENDING");
+  assert.ok(proposed[0].payload.evidence.attemptId);
+});

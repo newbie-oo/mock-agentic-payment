@@ -55,13 +55,17 @@ model Attempt {
 }
 
 model AgentRun {
-  id        String        @id @default(cuid())
-  merchant  String
-  prompt    String
-  mode      String
-  summary   String        @default("")
-  createdAt DateTime      @default(now())
-  actions   AgentAction[]
+  id             String        @id @default(cuid())
+  merchant       String
+  prompt         String
+  mode           String
+  summary        String        @default("")
+  createdAt      DateTime      @default(now())
+  responseStatus String        @default("COMPLETE")
+  providerCalls  Int           @default(0)
+  providerTurns  Int           @default(0)
+  deadlineAt     DateTime?
+  actions        AgentAction[]
 
   @@index([merchant, createdAt])
 }

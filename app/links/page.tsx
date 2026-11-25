@@ -1,3 +1,4 @@
+import { expired } from "@/lib/expiry";
 import { orders, size } from "@/lib/service";
 import { baht, localDate, pageNumber } from "@/lib/display";
 import { Copy, Manual } from "@/components/controls";
@@ -8,7 +9,7 @@ export default async function Page({
   searchParams: Promise<{ page?: string }>;
 }) {
   const page = pageNumber((await searchParams).page),
-    rows = await orders(page);
+    rows = await orders(page, false, undefined, size + 1);
   return (
     <>
       <h1>Payment links</h1>
@@ -27,7 +28,7 @@ export default async function Page({
               </tr>
             </thead>
             <tbody>
-              {rows.map((o) => {
+              {rows.slice(0, size).map((o) => {
                 const l = o.links[0];
                 return (
                   <tr key={o.id}>
@@ -41,7 +42,7 @@ export default async function Page({
                         value={
                           o.status === "PAID"
                             ? "PAID"
-                            : +l.expires < Date.now()
+                            : expired(l.expires)
                               ? "EXPIRED"
                               : "OPEN"
                         }
@@ -59,7 +60,7 @@ export default async function Page({
           </table>
         </div>
         {!rows.length && <p>No payment links on this page.</p>}
-        <Pager page={page} more={rows.length === size} />
+        <Pager page={page} more={rows.length > size} />
       </section>
     </>
   );

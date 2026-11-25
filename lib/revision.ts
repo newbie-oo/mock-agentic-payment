@@ -25,7 +25,7 @@ export async function retirePreviews(
       where: { id: runId, merchant },
       include: { actions: { where: { status: "PROPOSED" } } },
     });
-    if (!run.summary || run.summary === "Processing")
+    if (run.responseStatus === "PROCESSING")
       throw Error("Run already processing. Retry after the response appears.");
     if (
       request.kind === "revise" &&
@@ -77,7 +77,11 @@ export async function retirePreviews(
               ". Confirm to preview a new link.");
     return tx.agentRun.update({
       where: { id: runId },
-      data: { prompt: run.prompt + "\n" + text, summary },
+      data: {
+        prompt: run.prompt + "\n" + text,
+        summary,
+        responseStatus: request.kind === "revise" ? "NEEDS_INPUT" : "COMPLETE",
+      },
       include: { actions: { orderBy: { createdAt: "asc" } } },
     });
   });

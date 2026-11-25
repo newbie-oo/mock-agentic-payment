@@ -1,4 +1,5 @@
 "use client";
+import { baht } from "@/lib/display";
 import {
   AreaChart,
   Area,
@@ -10,7 +11,14 @@ import {
 } from "recharts";
 export function Trend({ data }: { data: { date: string; total: number }[] }) {
   return (
-    <div style={{ height: 205, minWidth: 0 }}>
+    <div
+      role="img"
+      aria-label={
+        "Daily revenue: " +
+        data.map((p) => p.date + " " + baht(p.total)).join(", ")
+      }
+      style={{ height: 205, minWidth: 0, overflow: "hidden" }}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ left: -15, right: 12, top: 14 }}>
           <defs>
@@ -32,12 +40,12 @@ export function Trend({ data }: { data: { date: string; total: number }[] }) {
             fontSize={11}
           />
           <YAxis
-            tickFormatter={(v) => v / 1000 + "k"}
+            tickFormatter={(v) => baht(v)}
             axisLine={false}
             tickLine={false}
             fontSize={11}
           />
-          <Tooltip />
+          <Tooltip formatter={(value) => baht(Number(value))} />
           <Area
             name="Revenue (THB)"
             type="monotone"

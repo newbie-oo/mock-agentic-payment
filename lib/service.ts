@@ -1,3 +1,4 @@
+import { expired } from "./expiry";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, merchant, day } from "./db";
@@ -34,24 +35,53 @@ export const size = 12;
 type Tx = Prisma.TransactionClient;
 const latest = {
   links: { orderBy: { createdAt: "desc" }, take: 1 },
-  attempts: { orderBy: { createdAt: "desc" }, take: 1 },
-} as const;
-export function orders(page = 1, unpaid = false, m = scope) {
+  attempts: {
+    orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+    take: 1,
+  },
+} satisfies Prisma.OrderInclude;
+export const cursorInput = z
+  .object({ id, createdAt: z.iso.datetime() })
+  .strict();
+export type OrderCursor = z.infer<typeof cursorInput>;
+export function orders(
+  page = 1,
+  unpaid = false,
+  m = scope,
+  take = size,
+  before?: OrderCursor,
+) {
   return db.order.findMany({
-    where: { merchant: m, ...(unpaid ? { status: "OPEN" } : {}) },
+    where: {
+      merchant: m,
+      ...(unpaid ? { status: "OPEN" } : {}),
+      ...(before
+        ? {
+            OR: [
+              { createdAt: { lt: new Date(before.createdAt) } },
+              { createdAt: new Date(before.createdAt), id: { lt: before.id } },
+            ],
+          }
+        : {}),
+    },
     include: latest,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * size,
-    take: size,
+    take,
   });
 }
-export function transactions(page = 1, m = scope, customer?: string) {
+export function transactions(
+  page = 1,
+  m = scope,
+  customer?: string,
+  take = size,
+) {
   return db.attempt.findMany({
     where: { merchant: m, ...(customer ? { order: { customer } } : {}) },
     include: { order: true },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * size,
-    take: size,
+    take,
   });
 }
 export function getLink(linkId: string, m = scope, client: Tx = db) {
@@ -102,12 +132,18 @@ export async function metrics(m = scope) {
     denominator,
     rate: denominator ? (100 * settled._count) / denominator : 0,
     methods,
-    trend: trend.map((p) => ({ ...p, total: Number(p.total) / 100 })),
+    trend: trend.map((p) => ({ ...p, total: Number(p.total) })),
   };
 }
 export function runRecord(prompt: string, mode: string, m = scope) {
   return db.agentRun.create({
-    data: { merchant: m, prompt, mode, createdAt: new Date(Date.now()) },
+    data: {
+      merchant: m,
+      prompt,
+      mode,
+      responseStatus: mode === "Manual" ? "COMPLETE" : "PROCESSING",
+      createdAt: new Date(Date.now()),
+    },
   });
 }
 export async function event(
@@ -146,13 +182,34 @@ export async function propose(
       kind === "regenerate_payment_link"
         ? replaceInput.parse(args)
         : noticeInput.parse(args);
-    const link = await getLink(data.linkId, m);
+    const link = await db.link.findFirstOrThrow({
+      where: { id: data.linkId, order: { merchant: m } },
+      include: { order: { include: { attempts: latest.attempts } } },
+    });
+    const attempt = link.order.attempts[0];
+    const activityAt = attempt?.createdAt ?? link.order.createdAt;
     if (!link.activeSlot || link.order.status !== "OPEN")
       throw Error("Order is no longer eligible");
     payload = {
       ...data,
       orderId: link.orderId,
       customer: link.order.customer,
+      description: link.order.description,
+      evidence: {
+        reason:
+          kind === "save_notification"
+            ? Date.now() - +activityAt >= day
+              ? "No new activity for at least 24 hours"
+              : "Merchant reminder request"
+            : expired(link.expires)
+              ? "Current checkout expired"
+              : "Replace current checkout",
+        expires: link.expires,
+        activityAt,
+        attemptId: attempt?.id ?? null,
+        outcome: attempt?.status ?? null,
+        method: attempt?.method ?? null,
+      },
       amount: link.order.amount,
       ...(kind === "regenerate_payment_link"
         ? {
@@ -191,7 +248,7 @@ export async function decide(actionId: string, approve: boolean, m = scope) {
     if (action.kind === "create_payment_link") {
       const data = createInput.parse(p);
       const expires = new Date(data.expires!);
-      if (+expires <= Date.now())
+      if (expired(expires))
         return finish("STALE", { summary: "Proposal expired" });
       const { amount, currency, customer, description } = data;
       const order = await tx.order.create({
@@ -214,7 +271,7 @@ export async function decide(actionId: string, approve: boolean, m = scope) {
         const expires = new Date(
           p.expires ?? new Date(+action.createdAt + day),
         );
-        if (+expires <= Date.now())
+        if (expired(expires))
           return finish("STALE", { summary: "Replacement proposal expired" });
         await tx.link.update({
           where: { id: link.id },
@@ -230,10 +287,22 @@ export async function decide(actionId: string, approve: boolean, m = scope) {
         });
         result = await getLink(replacement.id, m, tx);
       } else if (action.kind === "save_notification") {
-        if (+link.expires <= Date.now())
+        if (expired(link.expires))
           return finish("STALE", {
             summary: "Checkout expired before reminder approval",
           });
+        if (p.evidence) {
+          const last = await tx.attempt.findFirst({
+            where: { merchant: m, orderId: link.orderId },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: { id: true },
+          });
+          if ((last?.id ?? null) !== p.evidence.attemptId)
+            return finish("STALE", {
+              summary:
+                "Payment activity changed after the reminder was drafted",
+            });
+        }
         await tx.notification.create({
           data: {
             merchant: m,
@@ -278,7 +347,7 @@ export async function checkout(raw: unknown) {
     }
     if (
       !link.activeSlot ||
-      +link.expires <= Date.now() ||
+      expired(link.expires) ||
       link.order.status !== "OPEN"
     )
       throw Error("Checkout closed");

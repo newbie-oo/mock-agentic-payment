@@ -11,7 +11,15 @@ import { purchaseIntent } from "./purchase-intent";
 import { satang } from "./money";
 import { z } from "zod";
 import { db, day, merchant } from "./db";
-import { runRecord, event, orders, propose, createInput } from "./service";
+import {
+  runRecord,
+  event,
+  orders,
+  propose,
+  createInput,
+  cursorInput,
+  type OrderCursor,
+} from "./service";
 import { definitions, dispatch } from "./tools";
 export const hero = "ตรวจสอบยอดค้างชำระทั้งหมด วิเคราะห์ปัญหา และช่วยจัดการให้หน่อย";
 const system = `You help a merchant collect THB payments. Reply briefly in the user's language.
@@ -78,9 +86,29 @@ async function native(
         : prompt,
     },
   ];
-  const signal = AbortSignal.timeout(60000);
+  const expires = await db.agentRun.findFirstOrThrow({
+    where: { id: c.runId, merchant: c.m },
+    select: { deadlineAt: true },
+  });
+  const deadline = expires.deadlineAt ?? new Date(Date.now() + 60000);
+  if (!expires.deadlineAt)
+    await db.agentRun.update({
+      where: { id: c.runId },
+      data: { deadlineAt: deadline },
+    });
+  const remaining = +deadline - Date.now();
+  if (remaining <= 0)
+    throw Error("Agent deadline reached. Start a new request.");
+  const signal = AbortSignal.timeout(remaining);
+  let successfulCalls = 0;
   let calls = 0;
   for (let turn = 0; turn < 14; turn++) {
+    const turnReservation = await db.agentRun.updateMany({
+      where: { id: c.runId, merchant: c.m, providerTurns: { lt: 14 } },
+      data: { providerTurns: { increment: 1 } },
+    });
+    if (!turnReservation.count)
+      throw Error("Agent turn budget reached. Start a new request.");
     const payload = JSON.stringify({
       model: process.env.OPENAI_MODEL || "gpt-5.6-terra",
       messages,
@@ -125,6 +153,10 @@ async function native(
     const msg = reply.parse(JSON.parse(Buffer.concat(chunks).toString()))
       .choices[0].message;
     if (!msg.tool_calls?.length) {
+      if (calls && !successfulCalls)
+        throw Error(
+          "Provider completed without a successful tool result. Retry with corrected inputs.",
+        );
       if (
         !calls &&
         !msg.content?.startsWith("NEED_INPUT") &&
@@ -141,7 +173,16 @@ async function native(
       );
     }
     calls += msg.tool_calls.length;
-    if (calls > 32) throw Error("Agent tool budget reached");
+    const reserve = await db.agentRun.updateMany({
+      where: {
+        id: c.runId,
+        merchant: c.m,
+        providerCalls: { lte: 32 - msg.tool_calls.length },
+      },
+      data: { providerCalls: { increment: msg.tool_calls.length } },
+    });
+    if (!reserve.count)
+      throw Error("Agent tool budget reached. Start a new request.");
     messages.push({ role: "assistant", ...msg });
     for (const call of msg.tool_calls) {
       signal.throwIfAborted();
@@ -173,6 +214,7 @@ async function native(
         }
       }
       const result = await dispatch(call.function.name, args, c);
+      if (result.success) successfulCalls++;
       messages.push({
         role: "tool",
         tool_call_id: call.id,
@@ -187,6 +229,7 @@ async function demo(
   c: { runId: string; m: string },
   startedAt: Date,
   terms?: ConfirmedTerms,
+  after?: OrderCursor,
 ) {
   const read = async (name: string, args: unknown) => {
     const r = await dispatch(name, args, c);
@@ -226,7 +269,7 @@ async function demo(
         (o) =>
           o.links[0]?.activeSlot &&
           +o.links[0].expires > Date.now() &&
-          Date.now() - +o.createdAt > day &&
+          Date.now() - +(o.attempts[0]?.createdAt ?? o.createdAt) >= day &&
           o.attempts[0]?.status === "PENDING",
       );
       if (eligible) {
@@ -244,7 +287,7 @@ async function demo(
       }
     }
     const date = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
-    const today = totals.trend.find((d) => d.date === date)?.total ?? 0;
+    const today = (totals.trend.find((d) => d.date === date)?.total ?? 0) / 100;
     return thai
       ? "ยอดค้าง " + totals.pending / 100 + " บาท · รับวันนี้ " + today + " บาท"
       : "Received today (Bangkok): THB " +
@@ -276,13 +319,21 @@ async function demo(
     totals.open +
       " open orders · " +
       totals.customers +
-      " customers · ฿" +
+      " distinct customer names · ฿" +
       (totals.pending / 100).toLocaleString(),
   ];
-  for (let page = 1; page <= Math.min(5, Math.ceil(totals.open / 12)); page++) {
-    const data = (await read("list_unpaid_payments", { page })) as Awaited<
-      ReturnType<typeof orders>
-    >;
+  let cursor = after,
+    reviewed = 0;
+  const grouped = new Map<string, string[]>();
+  for (let batch = 0; batch < 5; batch++) {
+    const data = (await read("list_unpaid_payments", {
+      page: 1,
+      before: cursor,
+    })) as Awaited<ReturnType<typeof orders>>;
+    if (!data.length) break;
+    reviewed += data.length;
+    const last = data[data.length - 1];
+    cursor = { id: last.id, createdAt: last.createdAt.toISOString() };
     for (const order of data) {
       const link = order.links[0],
         attempt = order.attempts[0];
@@ -299,31 +350,67 @@ async function demo(
       } else if (attempt?.status === "UNKNOWN") {
         await read("get_payment_history", { orderId: order.id });
         reason = "Unknown outcome · verify manually";
-      } else if (Date.now() - +order.createdAt > day) {
+      } else if (Date.now() - +(attempt?.createdAt ?? order.createdAt) >= day) {
         const { body } = (await read("draft_payment_reminder", args)) as {
           body: string;
         };
         await read("save_notification", { ...args, body });
         reason = "Overdue · reminder ready for approval";
       } else reason = "Recent invoice · wait";
-      lines.push(order.customer + " · " + order.description + " · " + reason);
+      const rows = grouped.get(order.customer) ?? [];
+      rows.push(order.description + " · " + order.id + " · " + reason);
+      grouped.set(order.customer, rows);
     }
+  }
+  for (const [name, items] of grouped)
+    lines.push(name + "\n" + items.join("\n"));
+  if (
+    reviewed === 60 &&
+    cursor &&
+    (await orders(1, true, c.m, 1, cursor)).length
+  ) {
+    await db.agentAction.create({
+      data: {
+        runId: c.runId,
+        kind: "Continue collection",
+        status: "EVENT",
+        payload: JSON.stringify({
+          summary: "Additional open orders remain",
+          cursor,
+        }),
+      },
+    });
   }
   lines.push(
     "Settled orders excluded. Reviewed " +
-      Math.min(totals.open, 60) +
-      " of " +
-      totals.open +
-      " open orders.",
+      reviewed +
+      " open orders in this batch.",
   );
   return lines.join("\n");
 }
-export async function agent(input: string, previousId?: string) {
+export async function agent(
+  input: string,
+  previousId?: string,
+  continueRunId?: string,
+) {
   const latest = z.string().trim().min(1).max(2000).parse(input);
   let prompt = normalize(latest);
   const selectedMode = process.env.OPENAI_API_KEY
     ? "Native provider"
     : "Deterministic demo";
+  let cursor: OrderCursor | undefined;
+  if (continueRunId) {
+    if (previousId || prompt !== hero || selectedMode !== "Deterministic demo")
+      throw Error("Invalid collection continuation");
+    const marker = await db.agentAction.findFirstOrThrow({
+      where: {
+        runId: continueRunId,
+        kind: "Continue collection",
+        run: { merchant, mode: selectedMode },
+      },
+    });
+    cursor = cursorInput.parse(JSON.parse(marker.payload).cursor);
+  }
   const run = previousId
     ? await db.agentRun.findFirstOrThrow({
         where: { id: previousId, merchant },
@@ -333,10 +420,7 @@ export async function agent(input: string, previousId?: string) {
   const edit = editRequest(prompt);
   if (edit && previousId) return retirePreviews(run.id, edit, prompt);
   if (previousId) {
-    if (
-      !run.summary.startsWith("กรุณาระบุ") &&
-      !run.summary.startsWith("NEED_INPUT")
-    )
+    if (run.responseStatus !== "NEEDS_INPUT")
       throw Error(
         "This run already has a response. Start a new request, or change or cancel a pending proposal.",
       );
@@ -344,7 +428,7 @@ export async function agent(input: string, previousId?: string) {
     if (prompt.length > 3500) throw Error("Follow-up too long");
     const claimed = await db.agentRun.updateMany({
       where: { id: run.id, merchant, summary: run.summary },
-      data: { summary: "Processing", prompt },
+      data: { summary: "Processing", responseStatus: "PROCESSING", prompt },
     });
     if (!claimed.count) throw Error("Follow-up already received");
     await event(
@@ -354,6 +438,7 @@ export async function agent(input: string, previousId?: string) {
     );
   }
   let summary;
+  let failed = false;
   try {
     const intent = purchaseIntent(prompt);
     const context = { runId: run.id, m: merchant };
@@ -406,8 +491,9 @@ export async function agent(input: string, previousId?: string) {
       );
     } else if (mode === "Native provider") {
       summary = await native(prompt, context, !!readIntent(prompt), terms);
-    } else summary = await demo(prompt, context, run.createdAt, terms);
+    } else summary = await demo(prompt, context, run.createdAt, terms, cursor);
   } catch (e) {
+    failed = true;
     summary =
       e instanceof Error && /^(Agent |Provider |Tool failed)/.test(e.message)
         ? e.message
@@ -416,7 +502,14 @@ export async function agent(input: string, previousId?: string) {
   }
   return db.agentRun.update({
     where: { id: run.id },
-    data: { summary },
+    data: {
+      summary,
+      responseStatus: failed
+        ? "FAILED"
+        : summary.startsWith("NEED_INPUT") || summary.startsWith("กรุณาระบุ")
+          ? "NEEDS_INPUT"
+          : "COMPLETE",
+    },
     include: { actions: { orderBy: { createdAt: "asc" } } },
   });
 }

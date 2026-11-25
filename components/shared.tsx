@@ -24,7 +24,12 @@ export async function History({
   page?: number;
   compact?: boolean;
 }) {
-  const rows = await transactions(page);
+  const rows = await transactions(
+    page,
+    undefined,
+    undefined,
+    compact ? 5 : size + 1,
+  );
   return (
     <>
       <div className="scroll">
@@ -57,7 +62,7 @@ export async function History({
         </table>
       </div>
       {!rows.length && <p>No transactions on this page.</p>}
-      {!compact && <Pager page={page} more={rows.length === size} />}
+      {!compact && <Pager page={page} more={rows.length > size} />}
     </>
   );
 }

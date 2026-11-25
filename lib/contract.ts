@@ -10,6 +10,15 @@ export function actionDTO(action: AgentAction) {
     expires?: string;
     body?: string;
     linkId?: string;
+    orderId?: string;
+    evidence?: {
+      reason: string;
+      expires: string;
+      activityAt: string;
+      attemptId: string | null;
+      outcome: string | null;
+      method: string | null;
+    };
   };
   const result = action.result
     ? (JSON.parse(action.result) as {
@@ -37,15 +46,12 @@ export function actionDTO(action: AgentAction) {
 }
 export function runDTO(run: AgentRun & { actions: AgentAction[] }) {
   const actions = run.actions.map(actionDTO);
-  const error = actions.some((a) => a.kind === "Error") ? run.summary : null;
-  const status = error
-    ? "FAILED"
-    : actions.some((a) => a.status === "PROPOSED")
+  const error = run.responseStatus === "FAILED" ? run.summary : null;
+  const status =
+    run.responseStatus === "COMPLETE" &&
+    actions.some((a) => a.status === "PROPOSED")
       ? "AWAITING_APPROVAL"
-      : run.summary.startsWith("กรุณาระบุ") ||
-          run.summary.startsWith("NEED_INPUT")
-        ? "NEEDS_INPUT"
-        : "COMPLETE";
+      : run.responseStatus;
   const reviewed = actions.filter((a) =>
     ["EXECUTED", "REJECTED", "STALE", "FAILED"].includes(a.status),
   );
@@ -60,6 +66,7 @@ export function runDTO(run: AgentRun & { actions: AgentAction[] }) {
   return {
     ...run,
     runId: run.id,
+    deadlineAt: run.deadlineAt?.toISOString() ?? null,
     errorCode: error ? "AGENT_FAILED" : null,
     summary: [run.summary.replace(/^NEED_INPUT\s*/, ""), ...auditSummary].join(
       "\n",

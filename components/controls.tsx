@@ -86,6 +86,21 @@ function Proposal({
         </small>
       )}
       {p.linkId && <small>Checkout {p.linkId}</small>}
+      {p.evidence && (
+        <div>
+          <small>
+            Order {p.orderId} · {p.evidence.reason}
+          </small>
+          <small>
+            Last activity {localDate(p.evidence.activityAt)} ·{" "}
+            {p.evidence.outcome ?? "Order created"} {p.evidence.method} ·
+            checkout expiry {localDate(p.evidence.expires)}
+          </small>
+          {p.evidence.attemptId && (
+            <small>Attempt {p.evidence.attemptId}</small>
+          )}
+        </div>
+      )}
       {p.body && <blockquote>{p.body}</blockquote>}
       {r?.summary && <p>{r.summary}</p>}
       {href && (
@@ -133,12 +148,13 @@ export function Assistant({
   useEffect(() => {
     if (submission) resultHeading.current?.focus();
   }, [submission]);
-  async function send(value: string) {
+  async function send(value: string, continueRunId?: string) {
     await task.work(async () => {
       show("Processing your request…");
       set(
         await post<Run>("agent", {
           prompt: value,
+          continueRunId,
           ...(canReply && run && value !== hero ? { runId: run.id } : {}),
         }),
       );
@@ -247,6 +263,11 @@ export function Assistant({
               : "Assistant response"}
           </h2>
           <p className="summary">{run.summary}</p>
+          {run.actions.some((a) => a.kind === "Continue collection") && (
+            <Button disabled={task.busy} onClick={() => send(hero, run.id)}>
+              Review next orders
+            </Button>
+          )}
           <div className="row">
             <strong>
               {proposed.length} awaiting approval ·{" "}
@@ -267,6 +288,20 @@ export function Assistant({
               </Button>
             )}
           </div>
+          {proposed.length > 0 && (
+            <Button
+              variant="outline"
+              disabled={task.busy}
+              onClick={() =>
+                decisions(
+                  proposed.map((a) => a.id),
+                  false,
+                )
+              }
+            >
+              Reject all eligible
+            </Button>
+          )}
           {run.actions
             .filter((a) => a.status !== "EVENT")
             .map((a) => (
@@ -298,12 +333,12 @@ export function Manual({ linkId }: { linkId?: string }) {
     [action, set] = useState<AgentAction | null>(null);
   const task = useTask(),
     router = useRouter();
-  const stage = (args: unknown) =>
+  const stage = (args: () => unknown) =>
     task.work(async () => {
       set(
         await post("proposal", {
           kind: linkId ? "regenerate_payment_link" : "create_payment_link",
-          args,
+          args: args(),
         }),
       );
       setOpen(false);
@@ -319,7 +354,7 @@ export function Manual({ linkId }: { linkId?: string }) {
       <Button
         variant={linkId ? "ghost" : "default"}
         disabled={task.busy}
-        onClick={() => (linkId ? stage({ linkId }) : setOpen(!open))}
+        onClick={() => (linkId ? stage(() => ({ linkId })) : setOpen(!open))}
       >
         {linkId ? "Replace" : open ? "Close" : "Create payment link"}
       </Button>
@@ -329,7 +364,7 @@ export function Manual({ linkId }: { linkId?: string }) {
           onSubmit={(e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
-            void stage({
+            void stage(() => ({
               amount: satang(String(f.get("amount"))),
               currency: f.get("currency"),
               description: f.get("description"),
@@ -338,7 +373,7 @@ export function Manual({ linkId }: { linkId?: string }) {
               expires: new Date(
                 String(f.get("expiry")) + "+07:00",
               ).toISOString(),
-            });
+            }));
           }}
         >
           <label>
@@ -351,7 +386,14 @@ export function Manual({ linkId }: { linkId?: string }) {
           </label>
           <label>
             Amount
-            <input name="amount" type="number" min=".01" step=".01" required />
+            <input
+              name="amount"
+              type="number"
+              min=".01"
+              max="21474836.47"
+              step=".01"
+              required
+            />
           </label>
           <label>
             Currency
@@ -402,6 +444,31 @@ export function Simulator({
   const task = useTask(),
     router = useRouter(),
     [message, set] = useState("");
+  const [uncertain, setUncertain] = useState<{
+    linkId: string;
+    method: string;
+    status: string;
+    requestId: string;
+  } | null>(null);
+  const storageKey = "paypilot-checkout:" + linkId;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "null");
+      if (saved?.linkId === linkId && typeof saved.requestId === "string")
+        setUncertain(saved);
+    } catch {
+      /* In-memory retry remains available when browser storage is unavailable. */
+    }
+  }, [storageKey, linkId]);
+  function remember(attempt: typeof uncertain) {
+    setUncertain(attempt);
+    try {
+      if (attempt) sessionStorage.setItem(storageKey, JSON.stringify(attempt));
+      else sessionStorage.removeItem(storageKey);
+    } catch {
+      /* Memory retains the pending request in this tab. */
+    }
+  }
   return (
     <form
       className="fields"
@@ -409,20 +476,26 @@ export function Simulator({
         e.preventDefault();
         const f = new FormData(e.currentTarget);
         void task.work(async () => {
-          const a = await post<{ status: string }>("checkout", {
+          const attempt = uncertain ?? {
             linkId,
-            method: f.get("method"),
-            status: f.get("status"),
+            method: String(f.get("method")),
+            status: String(f.get("status")),
             requestId: crypto.randomUUID(),
-          });
-          set("Recorded " + a.status.toLowerCase());
+          };
+          remember(attempt);
+          const a = await post<{ id: string; status: string }>(
+            "checkout",
+            attempt,
+          );
+          remember(null);
+          set("Recorded " + a.status.toLowerCase() + " · " + a.id);
           router.refresh();
         });
       }}
     >
       <label>
         Payment method
-        <select name="method">
+        <select name="method" disabled={!!uncertain}>
           {methods.map((m) => (
             <option key={m}>{m}</option>
           ))}
@@ -430,14 +503,33 @@ export function Simulator({
       </label>
       <label>
         Sandbox outcome
-        <select name="status">
+        <select name="status" disabled={!!uncertain}>
           <option>SUCCESS</option>
           <option>PENDING</option>
           <option>FAILED</option>
         </select>
       </label>
-      <Button disabled={task.busy}>Simulate checkout</Button>
+      <Button disabled={task.busy}>
+        {uncertain ? "Retry same attempt" : "Simulate checkout"}
+      </Button>
       <p role="status">{task.error || message}</p>
+      {uncertain && (
+        <small>
+          Awaiting receipt for {uncertain.method} · {uncertain.status}
+        </small>
+      )}
+      {uncertain && !task.busy && (
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => {
+            remember(null);
+            set("");
+          }}
+        >
+          Start a new attempt
+        </Button>
+      )}
     </form>
   );
 }

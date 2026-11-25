@@ -30,7 +30,7 @@ async function seed() {
       data: {
         orderId: order.id,
         activeSlot: order.id,
-        methods: "QR,CARD",
+        methods: i === 19 ? "CARD" : "QR,CARD",
         expires: new Date(Date.now() + (i === 16 || i === 17 ? -1 : 2) * day),
         createdAt,
       },

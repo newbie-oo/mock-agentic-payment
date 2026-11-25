@@ -2,6 +2,7 @@ export const baht = (v: number) =>
   new Intl.NumberFormat("en-TH", {
     style: "currency",
     currency: "THB",
+    currencyDisplay: "narrowSymbol",
     maximumFractionDigits: v % 100 ? 2 : 0,
     minimumFractionDigits: v % 100 ? 2 : 0,
   }).format(v / 100);

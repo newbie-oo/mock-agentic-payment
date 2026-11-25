@@ -3,6 +3,7 @@ import { orders, size } from "@/lib/service";
 import { baht, localDate, pageNumber } from "@/lib/display";
 import { Copy, Manual } from "@/components/controls";
 import { Pager, Status } from "@/components/shared";
+import Link from "next/link";
 export default async function Page({
   searchParams,
 }: {
@@ -49,7 +50,10 @@ export default async function Page({
                       />
                     </td>
                     <td>
-                      <a href={"/pay/" + l.id}>Open ↗</a> <Copy id={l.id} />
+                      <Link href={"/pay/" + l.id} prefetch={false}>
+                        Open ↗
+                      </Link>{" "}
+                      <Copy id={l.id} />
                       <small>Expires {localDate(l.expires)}</small>
                     </td>
                     <td>{o.status === "OPEN" && <Manual linkId={l.id} />}</td>

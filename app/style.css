@@ -279,6 +279,27 @@ td strong {
   display: block;
   font-weight: 550;
 }
+.conversation p {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.conversation > strong {
+  display: block;
+  margin-top: 0.5rem;
+}
+.sandbox-qr {
+  text-align: center;
+  margin: 1rem auto;
+}
+.sandbox-qr img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: auto;
+}
+.sandbox-qr figcaption {
+  font-size: 0.9rem;
+}
 input:not([type="checkbox"]),
 select,
 textarea {

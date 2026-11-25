@@ -6,13 +6,20 @@ import type { ActionDTO as AgentAction, RunDTO as Run } from "@/lib/contract";
 import { Button } from "./ui/button";
 import { baht, localDate } from "@/lib/display";
 
-async function post<T>(route: string, data: unknown): Promise<T> {
+async function post<T>(
+  route: string,
+  data: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
   const r = await fetch("/api/" + route, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(data),
+    signal,
   });
-  const result = await r.json();
+  const result = await r.json().catch(() => {
+    throw Error("HTTP " + r.status + " · เซิร์ฟเวอร์ตอบกลับในรูปแบบที่อ่านไม่ได้");
+  });
   if (!r.ok && !result.status) throw Error(result.error || "Request failed");
   return result;
 }
@@ -48,6 +55,16 @@ export function Copy({ id }: { id: string }) {
     >
       {label}
     </Button>
+  );
+}
+function VerifiedCheckout({ href, id }: { href: string; id: string }) {
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+  return (
+    <div className="verified-link">
+      <a href={href}>Open verified checkout ↗</a> <Copy id={id} />
+      <small>{origin + href}</small>
+    </div>
   );
 }
 function Proposal({
@@ -103,16 +120,12 @@ function Proposal({
       )}
       {p.body && <blockquote>{p.body}</blockquote>}
       {r?.summary && <p>{r.summary}</p>}
-      {href && (
-        <div>
-          <a href={href}>Open verified checkout ↗</a> <Copy id={r!.id!} />
-        </div>
-      )}
+      {href && <VerifiedCheckout href={href} id={r!.id!} />}
       {r?.body && <p>Verified saved reminder · {r.id}</p>}
       {a.status === "PROPOSED" && (
         <div className="actions">
           <Button disabled={busy} onClick={() => handle(a.id, true)}>
-            Approve
+            {a.kind === "create_payment_link" ? "อนุมัติและสร้างลิงก์" : "Approve"}
           </Button>
           <Button
             variant="outline"
@@ -138,36 +151,92 @@ export function Assistant({
 }) {
   const [run, set] = useState(initial),
     [prompt, setPrompt] = useState(""),
-    [progress, show] = useState("");
+    [progress, show] = useState(""),
+    [sending, setSending] = useState("");
   const task = useTask(),
     router = useRouter();
   const canReply =
     run?.status === "NEEDS_INPUT" || run?.status === "AWAITING_APPROVAL";
   const resultHeading = useRef<HTMLHeadingElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const reviewRef = useRef<HTMLElement>(null);
+  const request = useRef<{ signature: string; requestId: string } | null>(null);
+  const inFlight = useRef(false);
   const [submission, setSubmission] = useState(0);
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   useEffect(() => {
-    if (submission) resultHeading.current?.focus();
-  }, [submission]);
+    if (!submission) return;
+    if (run?.status === "NEEDS_INPUT") inputRef.current?.focus();
+    else if (run?.actions.some((a) => a.checkoutUrl))
+      reviewRef.current
+        ?.querySelector<HTMLAnchorElement>(".verified-link a")
+        ?.focus();
+    else if (run?.status === "AWAITING_APPROVAL") reviewRef.current?.focus();
+    else resultHeading.current?.focus();
+  }, [submission, run?.status]);
   async function send(value: string, continueRunId?: string) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     await task.work(async () => {
-      show("Processing your request…");
-      set(
-        await post<Run>("agent", {
-          prompt: value,
-          continueRunId,
-          ...(canReply && run && value !== hero ? { runId: run.id } : {}),
-        }),
+      if (!value.trim()) throw Error("กรุณาพิมพ์คำขอก่อนส่ง");
+      setSending(value);
+      setPrompt(value);
+      show("กำลังส่งคำขอและตรวจสอบข้อมูล…");
+      const data = {
+        prompt: value,
+        continueRunId,
+        ...(canReply && run && value !== hero ? { runId: run.id } : {}),
+      };
+      const signature = JSON.stringify(data);
+      if (request.current?.signature !== signature)
+        request.current = { signature, requestId: crypto.randomUUID() };
+      const next = await post<Run>(
+        "agent",
+        { ...data, requestId: request.current.requestId },
+        AbortSignal.timeout(65000),
+      ).catch((e: Error) => {
+        if (e.name === "TimeoutError")
+          throw Error("หมดเวลารอเซิร์ฟเวอร์ กรุณาตรวจสถานะรายการแล้วลองอีกครั้ง");
+        if (e instanceof TypeError)
+          throw Error("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจเครือข่ายแล้วส่งข้อความเดิมอีกครั้ง");
+        throw e;
+      });
+      set(next);
+      request.current = null;
+      window.history.replaceState(
+        null,
+        "",
+        "/assistant?run=" + encodeURIComponent(next.id),
       );
+      if (next.error) throw Error(next.error);
       setPrompt("");
       setSubmission((n) => n + 1);
       router.refresh();
     });
+    setSending("");
+    inFlight.current = false;
   }
   const proposed = run?.actions.filter((a) => a.status === "PROPOSED") ?? [];
+  const created = run?.actions.some((a) => a.checkoutUrl);
+  const rejected = run?.actions.some((a) => a.status === "REJECTED");
+  const nextStep = !run
+    ? ""
+    : run.status === "FAILED"
+      ? "เกิดข้อผิดพลาด · ตรวจข้อความแล้วลองอีกครั้ง"
+      : run.status === "NEEDS_INPUT"
+        ? "รอคำตอบจากคุณ"
+        : proposed.length
+          ? "รอตรวจและอนุมัติข้อเสนอ"
+          : created
+            ? "สร้างลิงก์แล้ว · เปิดหรือคัดลอกลิงก์ด้านล่าง"
+            : rejected
+              ? "จบคำขอ · ไม่มีข้อเสนอรออนุมัติ"
+              : "จบคำขอแล้ว";
   async function decisions(ids: string[], approve: boolean) {
     await task.work(async () => {
       if (!run) return;
-      show("Checking current order status…");
+      show("กำลังตรวจสอบผลการตัดสินใจ…");
       if (ids.length > 1) {
         const result = await post<{ run: Run }>("decisions", {
           runId: run.id,
@@ -184,22 +253,122 @@ export function Assistant({
         set(await result.json());
       }
       router.refresh();
+      setSubmission((n) => n + 1);
     });
   }
   return (
     <>
       <section className="hero">
-        <span className="pill">{mode}</span>
+        <span className="pill">{run?.mode ?? mode}</span>
         <h2>Collection workspace</h2>
         <p>Review open orders and choose which follow-ups to approve.</p>
         <Button
           className="light"
-          disabled={task.busy}
+          disabled={!ready || task.busy}
           onClick={() => send(hero)}
         >
           Review outstanding payments →
         </Button>
       </section>
+      {run && (
+        <section className="panel conversation" aria-label="บทสนทนากับ PayPilot">
+          {run.actions
+            .filter((a) => a.payload.priorMessage)
+            .map((a) => (
+              <div key={a.id}>
+                <strong>คุณ</strong>
+                <p>{a.payload.priorMessage}</p>
+                <strong>PayPilot</strong>
+                <p>{a.payload.priorReply}</p>
+              </div>
+            ))}
+          <strong>คุณ</strong>
+          <p>{run.prompt.split("\n").at(-1)}</p>
+          <h2 ref={resultHeading} tabIndex={-1}>
+            {run.status === "NEEDS_INPUT"
+              ? /[ก-๙]/.test(run.prompt)
+                ? "ขอข้อมูลเพิ่มเติม"
+                : "Clarification needed"
+              : "คำตอบจาก PayPilot"}
+          </h2>
+          <p className="summary">{run.summary}</p>
+          <strong>{nextStep}</strong>
+          {run.status === "NEEDS_INPUT" &&
+            run.summary.includes("ตอบยืนยันได้เลย") && (
+              <div className="actions">
+                <Button disabled={task.busy} onClick={() => send("ใช่ ตามนี้")}>
+                  ใช่ ตามนี้
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={task.busy}
+                  onClick={() => inputRef.current?.focus()}
+                >
+                  แก้ไขรายละเอียด
+                </Button>
+              </div>
+            )}
+        </section>
+      )}
+      {run &&
+        run.actions.some(
+          (a) => a.status !== "EVENT" || a.kind === "Continue collection",
+        ) && (
+          <section className="panel" ref={reviewRef} tabIndex={-1}>
+            <small>
+              {run.mode} · {localDate(run.createdAt)}
+            </small>
+            {run.actions.some((a) => a.kind === "Continue collection") && (
+              <Button disabled={task.busy} onClick={() => send(hero, run.id)}>
+                Review next orders
+              </Button>
+            )}
+            <div className="row">
+              <strong>
+                {proposed.length} awaiting approval ·{" "}
+                {run.actions.filter((a) => a.status === "EXECUTED").length}{" "}
+                executed
+              </strong>
+              {proposed.length > 1 && (
+                <Button
+                  disabled={task.busy}
+                  onClick={() =>
+                    decisions(
+                      proposed.map((a) => a.id),
+                      true,
+                    )
+                  }
+                >
+                  Approve all eligible
+                </Button>
+              )}
+            </div>
+            {proposed.length > 1 && (
+              <Button
+                variant="outline"
+                disabled={task.busy}
+                onClick={() =>
+                  decisions(
+                    proposed.map((a) => a.id),
+                    false,
+                  )
+                }
+              >
+                Reject all eligible
+              </Button>
+            )}
+            {run.actions
+              .filter((a) => a.status !== "EVENT")
+              .map((a) => (
+                <Proposal
+                  key={a.id}
+                  a={a}
+                  busy={task.busy}
+                  handle={(id, v) => decisions([id], v)}
+                />
+              ))}
+          </section>
+        )}
       <form
         className="panel composer"
         onSubmit={(e) => {
@@ -208,7 +377,7 @@ export function Assistant({
         }}
       >
         <label htmlFor="prompt">
-          {run?.status === "NEEDS_INPUT" ? "Reply to PayPilot" : "Ask PayPilot"}
+          {run?.status === "NEEDS_INPUT" ? "ตอบกลับ" : "Ask PayPilot"}
         </label>
         {canReply && (
           <Button
@@ -218,6 +387,8 @@ export function Assistant({
             onClick={() => {
               set(null);
               setPrompt("");
+              request.current = null;
+              window.history.replaceState(null, "", "/assistant");
             }}
           >
             Start a new request
@@ -225,11 +396,13 @@ export function Assistant({
         )}
         <textarea
           id="prompt"
+          ref={inputRef}
           required
+          readOnly={!ready || task.busy}
           maxLength={2000}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          aria-describedby="composer-help"
+          aria-describedby="composer-help composer-status"
           onKeyDown={(e) => {
             if (
               e.key === "Enter" &&
@@ -246,72 +419,35 @@ export function Assistant({
         <small id="composer-help">
           Enter to send · Shift+Enter for a new line
         </small>
-        <Button type="submit" disabled={task.busy}>
-          {run?.status === "NEEDS_INPUT" ? "Send reply" : "Run assistant"}
+        <Button type="submit" disabled={!ready || task.busy || !prompt.trim()}>
+          {run?.status === "NEEDS_INPUT" ? "ส่งคำตอบ" : "ส่งคำขอ · Run assistant"}
         </Button>
-      </form>
-      {task.busy && <p role="status">{progress}</p>}
-      <p role="alert">{task.error}</p>
-      {run && (
-        <section className="panel">
-          <small>
-            {run.mode} · {run.status} · {localDate(run.createdAt)}
-          </small>
-          <h2 ref={resultHeading} tabIndex={-1}>
-            {run.status === "NEEDS_INPUT"
-              ? "Clarification needed"
-              : "Assistant response"}
-          </h2>
-          <p className="summary">{run.summary}</p>
-          {run.actions.some((a) => a.kind === "Continue collection") && (
-            <Button disabled={task.busy} onClick={() => send(hero, run.id)}>
-              Review next orders
-            </Button>
-          )}
-          <div className="row">
-            <strong>
-              {proposed.length} awaiting approval ·{" "}
-              {run.actions.filter((a) => a.status === "EXECUTED").length}{" "}
-              executed
-            </strong>
-            {proposed.length > 0 && (
-              <Button
-                disabled={task.busy}
-                onClick={() =>
-                  decisions(
-                    proposed.map((a) => a.id),
-                    true,
-                  )
+        <div id="composer-status" role="status" aria-live="polite">
+          {!ready && (
+            <p>
+              กำลังเชื่อมต่อผู้ช่วย หากหน้านี้ค้าง{" "}
+              <a
+                href={
+                  run
+                    ? "/assistant?run=" + encodeURIComponent(run.id)
+                    : "/assistant"
                 }
               >
-                Approve all eligible
-              </Button>
-            )}
-          </div>
-          {proposed.length > 0 && (
-            <Button
-              variant="outline"
-              disabled={task.busy}
-              onClick={() =>
-                decisions(
-                  proposed.map((a) => a.id),
-                  false,
-                )
-              }
-            >
-              Reject all eligible
-            </Button>
+                โหลดหน้าใหม่
+              </a>
+            </p>
           )}
-          {run.actions
-            .filter((a) => a.status !== "EVENT")
-            .map((a) => (
-              <Proposal
-                key={a.id}
-                a={a}
-                busy={task.busy}
-                handle={(id, v) => decisions([id], v)}
-              />
-            ))}
+          {task.busy && (
+            <>
+              {sending && <p>คุณ · {sending}</p>}
+              {progress}
+            </>
+          )}
+        </div>
+        {task.error && <p role="alert">ส่งคำขอไม่สำเร็จ · {task.error}</p>}
+      </form>
+      {run && (
+        <section className="panel">
           <details>
             <summary>Activity timeline</summary>
             <ol>

@@ -1,3 +1,5 @@
+import { checkoutStates } from "./checkout-states";
+import { checkAssistantTurns } from "./turn-smoke";
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
@@ -36,6 +38,8 @@ try {
   });
   try {
     const page = await browser.newPage();
+    await checkoutStates(page, base, dir + "/smoke.db");
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(base + "/assistant");
     await page.waitForLoadState("networkidle");
     const field = page.getByLabel("Ask PayPilot");
@@ -48,13 +52,13 @@ try {
     await field.press("Enter");
     const clarification = await (await pendingResponse).json();
     assert.equal(clarification.status, "NEEDS_INPUT");
-    await page.getByRole("heading", { name: "Clarification needed" }).waitFor();
+    await page.getByRole("heading", { name: "ขอข้อมูลเพิ่มเติม" }).waitFor();
     assert.match(await page.locator(".summary").innerText(), /ซื้อบ้านเอง/);
-    await page.getByLabel("Reply to PayPilot").fill("ใช่ เก็บค่าจองจากสมชาย");
+    await page.getByLabel("ตอบกลับ").fill("ใช่ เก็บค่าจองจากสมชาย");
     const followResponse = page.waitForResponse((r) =>
       r.url().endsWith("/api/agent"),
     );
-    await page.getByRole("button", { name: "Send reply" }).click();
+    await page.getByRole("button", { name: "ส่งคำตอบ" }).click();
     const follow = await (await followResponse).json();
     assert.equal(follow.runId, clarification.runId);
     assert.equal(
@@ -62,7 +66,8 @@ try {
         .amountMinor,
       500000,
     );
-    await page.getByRole("button", { name: "Reject", exact: true }).click();
+    await page.getByRole("button", { name: "อนุมัติและสร้างลิงก์" }).click();
+    await page.getByRole("link", { name: /Open verified checkout/ }).waitFor();
     await page.goto(base);
     const revenue = () =>
       page
@@ -94,7 +99,9 @@ try {
     );
     await page.goto(base + "/assistant?run=" + run.id);
     await page.getByText("Action " + action.id).waitFor();
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await page
+      .getByRole("button", { name: "อนุมัติและสร้างลิงก์", exact: true })
+      .click();
     await page.getByText("Open verified checkout").waitFor();
     const inspected = await (
       await page.request.get(base + "/api/run?id=" + run.id)
@@ -266,6 +273,7 @@ try {
       rows.reduce((n, r) => n + r.total, 0);
     assert.equal(sum(final.trend) - sum(initial.trend), 500000);
     assert.equal(final.denominator - initial.denominator, 3);
+    await checkAssistantTurns(page, base, dir + "/smoke.db");
     console.log(
       "Browser verified two reminders, replacement checkout, Bangkok creation, single ฿5,000 settlement and mobile overview.",
     );

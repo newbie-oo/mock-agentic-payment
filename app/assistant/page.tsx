@@ -8,11 +8,12 @@ export default async function Page({
   searchParams: Promise<{ run?: string }>;
 }) {
   const { run: id } = await searchParams;
-  const run = await db.agentRun.findFirst({
-    where: { merchant, ...(id ? { id } : { mode: { not: "Manual" } }) },
-    orderBy: { createdAt: "desc" },
-    include: { actions: { orderBy: { createdAt: "asc" } } },
-  });
+  const run = id
+    ? await db.agentRun.findFirst({
+        where: { merchant, id },
+        include: { actions: { orderBy: { createdAt: "asc" } } },
+      })
+    : null;
   return (
     <>
       <h1>AI Assistant</h1>

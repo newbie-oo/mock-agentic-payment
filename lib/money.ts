@@ -33,3 +33,12 @@ export function explicitSum(text: string): number | undefined {
   if (sum > 2147483647) throw Error("THB amount out of range");
   return sum;
 }
+
+// Reject an explicitly priced value the ledger cannot represent. This does not infer a total.
+export function validateQuotedMoney(text: string) {
+  const currency =
+    /(?:\bTHB\s*|฿\s*)(-?\d+(?:,\d{3})*(?:\.\d+)?)|(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:บาท|\bbaht\b|\bTHB\b)/gi;
+  for (const match of text.matchAll(currency)) {
+    satang((match[1] ?? match[2]).replaceAll(",", ""));
+  }
+}

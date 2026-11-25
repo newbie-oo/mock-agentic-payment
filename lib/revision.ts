@@ -20,7 +20,7 @@ async function appendTurn(
     throw Error("Follow-up already received");
   const pending = await tx.agentAction.findMany({
     where: { runId, status: "PROPOSED" },
-    select: { id: true, kind: true },
+    select: { id: true, kind: true, payload: true },
   });
   if (run.responseStatus !== "NEEDS_INPUT" && !pending.length)
     throw Error("Run already complete. Start a new request.");
@@ -78,6 +78,10 @@ async function appendTurn(
           ? question(terms, /[ก-๙]/.test(run.prompt))
           : run.summary.replace(/^NEED_INPUT\s*/, ""),
         confirmation: terms,
+        priorPreview:
+          pending.length === 1 && pending[0].kind === "create_payment_link"
+            ? JSON.parse(pending[0].payload)
+            : null,
       }),
     },
   });

@@ -31,6 +31,7 @@ export async function nativeHistory(runId: string, prompt: string) {
   const follow = rows.filter((r) => r.kind === "Follow-up").at(-1);
   return {
     history,
+    priorPreview: follow ? JSON.parse(follow.payload).priorPreview : null,
     priorTerms: follow ? JSON.parse(follow.payload).confirmation : null,
     turn: prompt.split("\n").length - 1,
   };
@@ -60,4 +61,21 @@ export async function recordReply(
     },
   });
   return summary;
+}
+
+// An amount-only reply cannot add new words to the earlier payment purpose.
+export function priorPurpose(description: string, history: ChatMessage[]) {
+  const originals = history
+    .filter((m) => m.role === "user")
+    .map((m) =>
+      String(m.content).normalize("NFC").replace(/\s+/g, " ").toLowerCase(),
+    );
+  const tokens = description.trim().split(/\s+/);
+  for (let n = tokens.length; n > 0; n--) {
+    const prefix = tokens.slice(0, n).join(" ");
+    if (
+      originals.some((t) => t.includes(prefix.normalize("NFC").toLowerCase()))
+    )
+      return prefix;
+  }
 }

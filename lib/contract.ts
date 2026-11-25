@@ -54,7 +54,7 @@ export function runDTO(run: AgentRun & { actions: AgentAction[] }) {
   const actions = run.actions.map(actionDTO);
   const error = run.responseStatus === "FAILED" ? run.summary : null;
   const status =
-    run.responseStatus === "COMPLETE" &&
+    ["NEEDS_INPUT", "COMPLETE"].includes(run.responseStatus) &&
     actions.some((a) => a.status === "PROPOSED")
       ? "AWAITING_APPROVAL"
       : run.responseStatus;

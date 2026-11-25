@@ -198,6 +198,33 @@ try {
       },
     ],
     [
+      "revise existing preview, preserve future expiry",
+      async (s) => {
+        const original = await s("ลิ้งรับเงิน 12233 ลูกค้า A ค่า gas");
+        const old = pending(original)[0];
+        assert.equal(old.amountMinor, 1223300);
+        const edited = await s("แก้ไขยอดเป็น 4500 บาท ลูกค้าชื่อบี", original.id);
+        const current = preview(edited, 450000, "บี", ["QR"], "ค่า gas");
+        assert.equal(current.payload.expires, old.payload.expires);
+        assert.ok(
+          Date.parse(old.payload.expires) > Date.parse("2026-11-25T03:00:00Z"),
+        );
+        assert.equal(
+          (await api("decision", { actionId: old.id, approve: true })).status,
+          "REJECTED",
+        );
+      },
+    ],
+    [
+      "balance and draft-only",
+      async (s) => {
+        const r = await s("ดูยอดก่อน ถ้ายังไม่จ่ายช่วยเตรียมข้อความ แต่ยังไม่ส่ง");
+        assert.equal(pending(r).length, 0);
+        assert.equal(r.status, "NEEDS_INPUT");
+        assert.ok(r.actions.some((a) => a.kind === "get_dashboard_metrics"));
+      },
+    ],
+    [
       "corrected confirmation",
       async (s) => {
         const r = await s("ลิ้ง ค่าบัตร 6000 เอ จ่าย");
@@ -246,6 +273,16 @@ try {
         clarify(
           await s("ช่วยออกลิงก์ค่าขนมให้หน่อย 420 หรือ 480 บาทนี่แหละ จำยอดสุทธิไม่ได้"),
         ),
+    ],
+    [
+      "excess currency precision",
+      async (s) => {
+        const r = await s(
+          "Issue an invoice to Rin for printing. Use THB 0.005 exactly.",
+        );
+        assert.equal(pending(r).length, 0);
+        assert.match(r.summary, /THB|decimal|satang|precision|amount/i);
+      },
     ],
     [
       "English unseen",

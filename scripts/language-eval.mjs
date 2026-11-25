@@ -33,8 +33,8 @@ const db = new DatabaseSync(file);
 const count = (t) => db.prepare("SELECT count(*) AS n FROM " + t).get().n;
 const ledger = () => ['"Order"', "Link", "Attempt", "Notification"].map(count);
 const app = spawn(
-  "node_modules/.bin/next",
-  ["start", "-H", "127.0.0.1", "-p", String(port)],
+  process.execPath,
+  ["scripts/start.mjs", "-H", "127.0.0.1", "-p", String(port)],
   { env, stdio: "ignore" },
 );
 const exit = once(app, "exit");
@@ -53,6 +53,7 @@ try {
     corrections,
     variants,
   })) {
+    if (process.env.EVAL_SPLIT && split !== process.env.EVAL_SPLIT) continue;
     const rows = [];
     let last;
     for (const [id, prompt, expected] of cases) {

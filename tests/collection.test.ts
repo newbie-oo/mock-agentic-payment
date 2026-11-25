@@ -1086,3 +1086,53 @@ test("native follow-up replays stored user, assistant and matching tool replies 
     delete process.env.OPENAI_API_KEY;
   }
 });
+
+test("native money validator rejects unrepresentable quoted prices without treating references as amounts", async () => {
+  const { validateQuotedMoney } = await import("../lib/money");
+  for (const value of ["0 บาท", "-30 baht", "THB 0.001", "฿21474836.48"])
+    assert.throws(() => validateQuotedMoney(value));
+  for (const value of [
+    "0.01 บาท",
+    "THB 21474836.47",
+    "ref 9999999999, THB 4.25",
+  ])
+    validateQuotedMoney(value);
+});
+
+test("revising a preview preserves a valid expiry and asks for a truly expired one", async () => {
+  const { interpret } = await import("../lib/merchant-intent");
+  const future = new Date(Date.now() + 3600000).toISOString();
+  const past = new Date(Date.now() - 1000).toISOString();
+  const original = {
+    amount: 1223300,
+    customer: "A",
+    currency: "THB" as const,
+    description: "ค่า gas",
+    methods: ["QR" as const],
+    expires: future,
+  };
+  const corrected = {
+    ...original,
+    customer: "บี",
+    amount: 450000,
+    expires: past,
+  };
+  const context = {
+    latest: "แก้ไขยอดเป็น 4500 บาท ลูกค้าชื่อบี",
+    thai: true,
+    turn: 1,
+    started: new Date(),
+    history: [],
+    priorTerms: null,
+    priorPreview: original,
+  };
+  const preserved = interpret({ intent: "create", terms: corrected }, context);
+  assert.equal(preserved.intent.terms?.expires, future);
+  assert.equal(preserved.intent.terms?.amount, 450000);
+  const closed = interpret(
+    { intent: "create", terms: corrected },
+    { ...context, priorPreview: { ...original, expires: past } },
+  );
+  assert.equal(closed.intent.intent, "clarify");
+  assert.match(closed.summary ?? "", /หมดอายุ/);
+});

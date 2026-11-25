@@ -87,3 +87,11 @@ On the production HTTP endpoint the deterministic adapter recorded `แพร �
 | Live evidence | Independent QA ran the held recap, same-run Chrome continuation, approval and retry with the actual provider on 3880599. The offline payer check also passed on that revision. The historical classifications for `time-alone` and `house-card` were unavailable. The constructed provider fixtures cover their observed outcomes. Final live replay belongs to independent QA. |
 
 Run `npm run typecheck`, `npm test`, `npm run build`, `node scripts/language-eval.mjs` and `CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' npm run smoke`. The regression named `native HTTP resolves missing terms, expiry edits, method selection and affirmative fee correction without ledger writes` checks HTTP status, active and retired snapshots, same-run continuity and unchanged order, link, attempt and notification counts. The offline corpus includes 63 turns.
+
+### Correcting the expiry of a pending preview (card 5)
+
+QA retained the provider arguments in run `cmwvjco000006dlz9geh0k1oo`. The model correctly identified the two-hour expiry and also set `deferPreview=true`. On 28f9161 a fixed-clock HTTP replay reproduced NEEDS_INPUT and zero active proposals. The merchant had corrected the duration without requesting a hold.
+
+The same replay now returns AWAITING_APPROVAL with one replacement preview for วิชัย, มัดจำบ้าน, 50,000 satang, QR, expiring at 2026-11-25 12:00 Bangkok. Replaying approval of the original action returns REJECTED. Counts of orders, links, attempts and notifications stay unchanged. A standalone duration still asks which order or link to edit. An explicit hold retains the revised terms and leaves the same conversation open until the merchant requests a preview.
+
+Run `node_modules/.bin/tsx --test --test-name-pattern='native HTTP resolves missing terms|grounded terms|complete reviewed preview' tests/collection.test.ts` to replay the provider fixtures with isolated SQLite. Typecheck, 29 tests and the production build passed. The held-recap browser check passed in native fixture and deterministic modes. Independent QA owns the live provider replay.

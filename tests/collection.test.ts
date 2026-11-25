@@ -1287,7 +1287,24 @@ test("the native interpretation can edit a complete reviewed preview without rep
   assert.equal(interpret(decision, ctx).intent.intent, "create");
   assert.equal(
     interpret({ ...decision, deferPreview: true }, ctx).intent.intent,
-    "confirm",
+    "create",
+  );
+  const english = "Use two hours; don't make it two days.";
+  const expiryEdit = {
+    intent: "create",
+    deferPreview: true,
+    expiryChangeQuote: english,
+    expiryOnlyUtc: new Date(Date.now() + 7200000).toISOString(),
+  };
+  assert.equal(
+    interpret(expiryEdit, { ...ctx, latest: english }).intent.intent,
+    "create",
+  );
+  assert.ok(
+    interpret(expiryEdit, {
+      ...ctx,
+      latest: english + " Hold the preview.",
+    }).summary?.startsWith("HELD_INPUT "),
   );
   assert.equal(
     interpret(decision, { ...ctx, priorTerms: snapshot, priorPreview: null })
@@ -1379,7 +1396,8 @@ test("held recap uses grounded terms, leaves the thread open, and keeps guides a
 });
 
 test("native HTTP resolves missing terms, expiry edits, method selection and affirmative fee correction without ledger writes", async (t) => {
-  const now = Date.now();
+  const now = Date.parse("2026-11-25T03:00:00Z");
+  t.mock.method(Date, "now", () => now);
   const expiry = new Date(now + 86400000).toISOString();
   const twoHours = new Date(now + 7200000).toISOString();
   const base = {
@@ -1462,15 +1480,25 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
     }
     stage("create", { terms: { amount: "broken" } });
     assert.equal((await send(duration)).code, 502);
-    stage("create", { terms: base });
+    stage("create", {
+      terms: { ...base, expires: "2026-11-26T03:00:00Z" },
+      payerBinding: "identified",
+    });
     const original = (await send("รับเงิน 500 บาท จากลูกค้าชื่อวิชัย สำหรับมัดจำบ้าน"))
       .value;
-    stage("confirm", {
-      expiryOnlyUtc: twoHours,
-      expiryChangeQuote: "อีก 2 ชม.",
+    // Recorded native arguments from QA run cmwvjco000006dlz9geh0k1oo.
+    stage("create", {
+      expiryOnlyUtc: "2026-11-25T05:00:00Z",
+      expiryChangeQuote: duration,
+      deferPreview: true,
     });
+    const standalone = (await send(duration)).value;
+    assert.equal(standalone.status, "NEEDS_INPUT");
+    assert.match(standalone.summary, /ออเดอร์หรือลิงก์/);
     const amended = (await send(duration, original.id)).value;
     assert.equal(amended.status, "AWAITING_APPROVAL");
+    assert.equal(amended.id, original.id);
+    assert.equal(pending(amended).length, 1);
     assert.deepEqual(pending(amended)[0].payload, {
       ...base,
       expires: twoHours,
@@ -1481,6 +1509,34 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
       ).status,
       "REJECTED",
     );
+    const stale = await api("decision", {
+      actionId: pending(original)[0].id,
+      approve: true,
+    });
+    assert.equal(stale.value.status, "REJECTED");
+    assert.deepEqual(await counts(), before);
+    // The same edit can include a separate instruction to hold. Its saved expiry
+    // also stays editable without resuming the proposal or restoring the old QR link.
+    const editedAgain = "ขอแก้เป็นพรุ่งนี้ แล้วพักข้อเสนอไว้ก่อน";
+    stage("create", { expiryOnlyUtc: expiry, expiryChangeQuote: "พรุ่งนี้" });
+    const held = (await send(editedAgain, original.id)).value;
+    assert.equal(held.nextAction, "PREPARE_PREVIEW");
+    assert.equal(pending(held).length, 0);
+    stage("create", {
+      expiryOnlyUtc: twoHours,
+      expiryChangeQuote: duration,
+      requestQuote: duration,
+    });
+    const stillHeld = (await send(duration, original.id)).value;
+    assert.equal(stillHeld.nextAction, "PREPARE_PREVIEW");
+    assert.equal(pending(stillHeld).length, 0);
+    const resumed = (await send("เตรียมข้อเสนอจากข้อมูลนี้", original.id)).value;
+    assert.equal(resumed.status, "AWAITING_APPROVAL");
+    assert.deepEqual(pending(resumed)[0].payload, {
+      ...base,
+      expires: twoHours,
+    });
+    assert.deepEqual(await counts(), before);
     stage("create", {
       expiryOnlyUtc: expiry,
       expiryChangeQuote: "in two weeks",

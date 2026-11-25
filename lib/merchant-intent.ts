@@ -8,7 +8,11 @@ import {
 } from "./money";
 import { priorPurpose, type ChatMessage } from "./native-history";
 import { paymentMethods } from "./payment-fields";
-import { startsAsPurchase, requestsFullPrice } from "./language";
+import {
+  startsAsPurchase,
+  requestsFullPrice,
+  explicitlyHoldsPreview,
+} from "./language";
 import {
   confirmationPrefix,
   heldPrefix,
@@ -54,7 +58,7 @@ export const intentSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "True when the latest instruction holds a checkout. For an edit or recap of an existing preview also include the full updated terms. Pure how-to uses guide.",
+      "True only when the merchant explicitly asks to postpone preparing the preview. Correcting or excluding a deadline or payment method does not request a hold. For a held recap include the revised terms. Pure how-to uses guide.",
     ),
   payerBinding: z
     .enum(["identified", "inferred"])
@@ -207,6 +211,11 @@ export function interpret(
   if (!result.success) throw Error("Provider returned invalid intent fields");
   const intent = result.data;
   if (
+    intent.deferPreview ||
+    (c.priorPreview && ["create", "confirm"].includes(intent.intent))
+  )
+    intent.deferPreview = explicitlyHoldsPreview(c.latest);
+  if (
     intent.intent === "collect" &&
     (!intent.managementQuote || !c.latest.includes(intent.managementQuote))
   )
@@ -253,7 +262,9 @@ export function interpret(
       c.priorTerms || intent.deferPreview || c.heldTerms ? "confirm" : "create";
   }
   const resumeQuote =
-    intent.requestQuote && c.latest.includes(intent.requestQuote);
+    !intent.expiryOnlyUtc &&
+    intent.requestQuote &&
+    c.latest.includes(intent.requestQuote);
   if (
     !intent.deferPreview &&
     ["clarify", "confirm", "create"].includes(intent.intent)

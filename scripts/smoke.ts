@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+import { checkDashboardStates } from "./dashboard-states";
 import { checkoutStates } from "./checkout-states";
 import { checkAssistantTurns } from "./turn-smoke";
 import { chromium } from "@playwright/test";
@@ -15,8 +17,6 @@ const env = {
   DATABASE_URL: "file:" + dir + "/smoke.db",
   OPENAI_API_KEY: "",
 };
-execFileSync("node_modules/.bin/prisma", ["migrate", "deploy"], { env });
-execFileSync("node_modules/.bin/tsx", ["scripts/seed.ts"], { env });
 const app = spawn(
   "node_modules/.bin/next",
   ["start", "-H", "127.0.0.1", "-p", port],
@@ -27,7 +27,7 @@ try {
   for (let i = 0; i < 50; i++) {
     if (app.exitCode !== null) throw Error("Server startup failed");
     try {
-      if ((await fetch(base)).ok) break;
+      if ((await fetch(base + "/assistant")).ok) break;
     } catch {}
     await new Promise((r) => setTimeout(r, 200));
   }
@@ -37,37 +37,14 @@ try {
       : {}),
   });
   try {
+    await checkDashboardStates(browser, base, () => {
+      execFileSync("node_modules/.bin/prisma", ["migrate", "deploy"], { env });
+    });
+    execFileSync("node_modules/.bin/tsx", ["scripts/seed.ts"], { env });
     const page = await browser.newPage();
     await checkoutStates(page, base, dir + "/smoke.db");
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(base + "/assistant");
-    await page.waitForLoadState("networkidle");
-    const field = page.getByLabel("Ask PayPilot");
-    await field.fill("ต้องการซื้อบ้าน ภายใน 2 ชม ราคา 5000");
-    await field.press("Shift+Enter");
-    assert.ok((await field.inputValue()).endsWith("\n"));
-    const pendingResponse = page.waitForResponse((r) =>
-      r.url().endsWith("/api/agent"),
-    );
-    await field.press("Enter");
-    const clarification = await (await pendingResponse).json();
-    assert.equal(clarification.status, "NEEDS_INPUT");
-    await page.getByRole("heading", { name: "ขอข้อมูลเพิ่มเติม" }).waitFor();
-    assert.match(await page.locator(".summary").innerText(), /ซื้อบ้านเอง/);
-    await page.getByLabel("ตอบกลับ").fill("ใช่ เก็บค่าจองจากสมชาย");
-    const followResponse = page.waitForResponse((r) =>
-      r.url().endsWith("/api/agent"),
-    );
-    await page.getByRole("button", { name: "ส่งคำตอบ" }).click();
-    const follow = await (await followResponse).json();
-    assert.equal(follow.runId, clarification.runId);
-    assert.equal(
-      follow.actions.find((a: { status: string }) => a.status === "PROPOSED")
-        .amountMinor,
-      500000,
-    );
-    await page.getByRole("button", { name: "อนุมัติและสร้างลิงก์" }).click();
-    await page.getByRole("link", { name: /Open verified checkout/ }).waitFor();
+    const started = performance.now();
     await page.goto(base);
     const revenue = () =>
       page
@@ -77,16 +54,10 @@ try {
         .innerText()
         .then((v) => Number(v.replace(/[^\d.]/g, "")));
     const before = await revenue();
-    await page.getByRole("link", { name: "Review collections" }).click();
+    assert.equal(before, 34600);
     await page
-      .getByRole("button", { name: "Review outstanding payments" })
-      .click();
-    await page.getByRole("button", { name: "Approve all eligible" }).click();
-    await page.getByText("0 awaiting approval · 4 executed").waitFor();
-    assert.equal(await page.getByText(/Verified saved reminder/).count(), 2);
-    await page.getByText("Open verified checkout").first().click();
-    await page.getByRole("button", { name: "Simulate checkout" }).waitFor();
-    const started = performance.now();
+      .getByText("64.0% success · 16 settlements / 25 recorded attempts")
+      .waitFor();
     const api = await page.request.post(base + "/api/agent", {
       data: {
         prompt: "สร้างลิงก์รับเงินค่าทำเว็บไซต์ 5,000 บาท ให้ลูกค้าสมชาย หมดอายุพรุ่งนี้",
@@ -120,25 +91,147 @@ try {
     ).json();
     assert.equal(retry.checkoutUrl, verified.checkoutUrl);
     await page.getByText("Open verified checkout").click();
-    await page.getByRole("button", { name: "Simulate checkout" }).click();
+    for (const outcome of ["FAILED", "FAILED", "SUCCESS"]) {
+      await page.getByLabel("Sandbox outcome").selectOption(outcome);
+      const response = page.waitForResponse((r) =>
+        r.url().endsWith("/api/checkout"),
+      );
+      await page.getByRole("button", { name: "Simulate checkout" }).click();
+      const receipt = await response;
+      assert.equal(receipt.status(), 200);
+      const attempt = await receipt.json();
+      assert.equal(attempt.status, outcome);
+      if (outcome === "FAILED") {
+        await page.getByText("Recorded failed · " + attempt.id).waitFor();
+        assert.equal(
+          (await (await page.request.get(base + "/api/dashboard")).json())
+            .revenue,
+          before * 100,
+        );
+      } else {
+        const replay = await page.request.post(base + "/api/checkout", {
+          data: receipt.request().postDataJSON(),
+        });
+        assert.equal((await replay.json()).id, attempt.id);
+      }
+    }
     await page.getByText("Paid in full").waitFor();
     await page.reload();
     await page.getByText("Paid in full").waitFor();
     await page.goto(base);
     assert.equal((await revenue()) - before, 5000);
     await page.getByRole("img", { name: /Daily revenue:.*฿5,000/ }).waitFor();
+    await page
+      .getByText("60.7% success · 17 settlements / 28 recorded attempts")
+      .waitFor();
+    await page
+      .getByText("Failed attempts")
+      .locator("..")
+      .getByText("5", { exact: true })
+      .waitFor();
+    assert.deepEqual(
+      await page
+        .locator("tbody tr .status")
+        .allTextContents()
+        .then((rows) => rows.slice(0, 3)),
+      ["success", "failed", "failed"],
+    );
+    const after = await revenue();
+    const metrics = await (
+      await page.request.get(base + "/api/dashboard")
+    ).json();
+    assert.deepEqual(
+      [
+        metrics.revenue,
+        metrics.pending,
+        metrics.success,
+        metrics.failed,
+        metrics.denominator,
+      ],
+      [after * 100, 3410000, 17, 5, 28],
+    );
+    for (const method of metrics.methods) {
+      await page
+        .getByText(
+          method.method + " · " + method._count + " successful payments",
+          { exact: true },
+        )
+        .waitFor();
+    }
+
+    await page.getByRole("link", { name: "Review collections" }).click();
+    await page
+      .getByRole("button", { name: "Review outstanding payments" })
+      .click();
+    await page.getByText("4 awaiting approval · 0 executed").waitFor();
+    assert.match(
+      await page.locator(".summary").innerText(),
+      /Recent invoice · wait/,
+    );
+    await page.getByRole("button", { name: "Approve all eligible" }).click();
+    await page.getByText("0 awaiting approval · 4 executed").waitFor();
+    assert.equal(await page.getByText(/Verified saved reminder/).count(), 2);
+    const db = new DatabaseSync(dir + "/smoke.db", { readOnly: true });
+    try {
+      assert.equal(
+        db.prepare("SELECT COUNT(*) AS n FROM Notification").get()!.n,
+        2,
+      );
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT status FROM Attempt WHERE linkId = ? ORDER BY createdAt",
+          )
+          .all(verified.result.id)
+          .map((row) => row.status),
+        ["FAILED", "FAILED", "SUCCESS"],
+      );
+    } finally {
+      db.close();
+    }
+    await page.getByText("Open verified checkout").first().click();
+    await page.getByRole("button", { name: "Simulate checkout" }).waitFor();
     console.log(
       JSON.stringify({
         runId: run.id,
         actionId: action.id,
         checkoutUrl: verified.checkoutUrl,
         revenueBeforeBaht: before,
-        revenueAfterBaht: await revenue(),
-        happyPathSeconds: Number(
+        revenueAfterBaht: after,
+        automatedDemoSeconds: Number(
           ((performance.now() - started) / 1000).toFixed(2),
         ),
       }),
     );
+    await page.goto(base + "/assistant");
+    await page.waitForLoadState("networkidle");
+    const field = page.getByLabel("Ask PayPilot");
+    await field.fill("ต้องการซื้อบ้าน ภายใน 2 ชม ราคา 5000");
+    await field.press("Shift+Enter");
+    assert.ok((await field.inputValue()).endsWith("\n"));
+    const pendingResponse = page.waitForResponse((r) =>
+      r.url().endsWith("/api/agent"),
+    );
+    await field.press("Enter");
+    const clarification = await (await pendingResponse).json();
+    assert.equal(clarification.status, "NEEDS_INPUT");
+    await page.getByRole("heading", { name: "ขอข้อมูลเพิ่มเติม" }).waitFor();
+    assert.match(await page.locator(".summary").innerText(), /ซื้อบ้านเอง/);
+    await page.getByLabel("ตอบกลับ").fill("ใช่ เก็บค่าจองจากสมชาย");
+    const followResponse = page.waitForResponse((r) =>
+      r.url().endsWith("/api/agent"),
+    );
+    await page.getByRole("button", { name: "ส่งคำตอบ" }).click();
+    const follow = await (await followResponse).json();
+    assert.equal(follow.runId, clarification.runId);
+    assert.equal(
+      follow.actions.find((a: { status: string }) => a.status === "PROPOSED")
+        .amountMinor,
+      500000,
+    );
+    await page.getByRole("button", { name: "อนุมัติและสร้างลิงก์" }).click();
+    await page.getByRole("link", { name: /Open verified checkout/ }).waitFor();
+    await page.goto(base);
     await page.setViewportSize({ width: 390, height: 844 });
     // ResponsiveContainer redraws on ResizeObserver after the viewport changes.
     await page.waitForFunction(

@@ -1,9 +1,9 @@
 "use client";
-export default function ErrorPage({ reset }: { reset: () => void }) {
+export default function ErrorPage() {
   return (
     <section className="panel">
       <h2>Workspace unavailable</h2>
-      <button onClick={reset}>Try again</button>
+      <button onClick={() => window.location.reload()}>Try again</button>
     </section>
   );
 }

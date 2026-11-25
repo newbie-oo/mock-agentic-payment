@@ -1,7 +1,8 @@
 "use client";
+import { satang } from "@/lib/money";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AgentAction, AgentRun } from "@prisma/client";
+import type { ActionDTO as AgentAction, RunDTO as Run } from "@/lib/contract";
 import { Button } from "./ui/button";
 import { baht, localDate } from "@/lib/display";
 
@@ -12,7 +13,7 @@ async function post<T>(route: string, data: unknown): Promise<T> {
     body: JSON.stringify(data),
   });
   const result = await r.json();
-  if (!r.ok) throw Error(result.error || "Request failed");
+  if (!r.ok && !result.status) throw Error(result.error || "Request failed");
   return result;
 }
 function useTask() {
@@ -58,9 +59,9 @@ function Proposal({
   handle: (id: string, v: boolean) => void;
   busy: boolean;
 }) {
-  const p = JSON.parse(a.payload),
-    r = a.result ? JSON.parse(a.result) : null;
-  const href = r?.methods ? "/pay/" + r.id : null;
+  const p = a.payload,
+    r = a.result;
+  const href = a.checkoutUrl;
   return (
     <article className="proposal">
       <div className="row">
@@ -73,12 +74,15 @@ function Proposal({
         </strong>
         <span className="status">{a.status.toLowerCase()}</span>
       </div>
+      <small>Action {a.id}</small>
       <p>
-        {p.customer} · {baht(p.amount)} {p.description && "· " + p.description}
+        {p.customer} · {baht(p.amount ?? 0)}{" "}
+        {p.description && "· " + p.description}
       </p>
       {p.methods && (
         <small>
-          {p.currency} · {p.methods.join(", ")} · expires {localDate(p.expires)}
+          {p.currency} · {p.methods.join(", ")} · expires{" "}
+          {localDate(p.expires!)}
         </small>
       )}
       {p.linkId && <small>Checkout {p.linkId}</small>}
@@ -86,7 +90,7 @@ function Proposal({
       {r?.summary && <p>{r.summary}</p>}
       {href && (
         <div>
-          <a href={href}>Open verified checkout ↗</a> <Copy id={r.id} />
+          <a href={href}>Open verified checkout ↗</a> <Copy id={r!.id!} />
         </div>
       )}
       {r?.body && <p>Verified saved reminder · {r.id}</p>}
@@ -107,7 +111,7 @@ function Proposal({
     </article>
   );
 }
-type Run = AgentRun & { actions: AgentAction[] };
+
 export function Assistant({
   initial,
   hero,
@@ -125,7 +129,14 @@ export function Assistant({
   async function send(value: string) {
     await task.work(async () => {
       show("Reading merchant records…");
-      set(await post<Run>("agent", { prompt: value }));
+      set(
+        await post<Run>("agent", {
+          prompt: value,
+          ...(run?.status === "NEEDS_INPUT" && value !== hero
+            ? { runId: run.id }
+            : {}),
+        }),
+      );
       setPrompt("");
       router.refresh();
     });
@@ -133,29 +144,23 @@ export function Assistant({
   const proposed = run?.actions.filter((a) => a.status === "PROPOSED") ?? [];
   async function decisions(ids: string[], approve: boolean) {
     await task.work(async () => {
-      for (const [i, id] of ids.entries()) {
-        show("Reviewing " + (i + 1) + " of " + ids.length + "…");
-        const action = await post<AgentAction>("decision", {
-          actionId: id,
+      if (!run) return;
+      show("Checking current order status…");
+      if (ids.length > 1) {
+        const result = await post<{ run: Run }>("decisions", {
+          runId: run.id,
           approve,
         });
-        set((prev) =>
-          prev
-            ? {
-                ...prev,
-                actions: prev.actions.map((a) => (a.id === id ? action : a)),
-              }
-            : prev,
+        set(result.run);
+      } else {
+        await post<AgentAction>("decision", { actionId: ids[0], approve });
+        const result = await fetch(
+          "/api/run?id=" + encodeURIComponent(run.id),
+          { cache: "no-store" },
         );
+        if (!result.ok) throw Error("Run unavailable");
+        set(await result.json());
       }
-      if (run)
-        set(
-          await (
-            await fetch("/api/run?id=" + encodeURIComponent(run.id), {
-              cache: "no-store",
-            })
-          ).json(),
-        );
       router.refresh();
     });
   }
@@ -196,7 +201,7 @@ export function Assistant({
       {run && (
         <section className="panel">
           <small>
-            {run.mode} · {localDate(run.createdAt)}
+            {run.mode} · {run.status} · {localDate(run.createdAt)}
           </small>
           <h2>{run.prompt}</h2>
           <p className="summary">{run.summary}</p>
@@ -236,9 +241,7 @@ export function Assistant({
               {run.actions.map((a) => (
                 <li key={a.id}>
                   {localDate(a.createdAt)} · {a.kind} ·{" "}
-                  {a.status === "EVENT"
-                    ? JSON.parse(a.payload).summary
-                    : a.status}
+                  {a.status === "EVENT" ? a.payload.summary : a.status}
                 </li>
               ))}
             </ol>
@@ -285,7 +288,7 @@ export function Manual({ linkId }: { linkId?: string }) {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
             void stage({
-              amount: Math.round(Number(f.get("amount")) * 100),
+              amount: satang(String(f.get("amount"))),
               currency: f.get("currency"),
               description: f.get("description"),
               customer: f.get("customer"),

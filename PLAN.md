@@ -57,3 +57,6 @@ Merchant owns one studio ledger. Order is a customer's single debt. Link grants 
 - A SQLite transaction changes OPEN to PAID and inserts a success with unique settlement order ID. A request token identifies retry of a specific checkout submission.
 - Store immutable validated action payloads. Approval accepts only the stored ID and a decision. Within the same transaction recheck eligibility, apply changes, read the record back, and persist its ID and result. A replay returns the saved outcome.
 - Select the deterministic adapter only at run start with an empty provider key. A configured provider failure persists an error on the native run. Both modes share the same registry and approval boundary.
+
+## HTTP contract extension
+Use the same run and action DTOs for server-rendered previews, GET inspection and POST results. Bind every lookup to the server merchant. Accept only action identity and decision during approval. Return 409 for stale checkout and 502 with an inspectable failed run on provider error. Support bounded follow-up on the same run. Commit routes, browser/HTTP regressions and copyable curl examples separately.

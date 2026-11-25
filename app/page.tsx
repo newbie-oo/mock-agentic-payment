@@ -59,8 +59,8 @@ export default async function Home() {
       <section className="panel">
         <h2>Payment performance</h2>
         <p>
-          {m.rate.toFixed(1)}% success · {m.success} settlements /{" "}
-          {m.denominator} recorded attempts
+          {m.denominator ? m.rate.toFixed(1) + "% success" : "No attempts yet"}{" "}
+          · {m.success} settlements / {m.denominator} recorded attempts
         </p>
         {m.methods.map((x) => (
           <p key={x.method}>

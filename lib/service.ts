@@ -10,7 +10,7 @@ export const createInput = z
       .number()
       .int()
       .min(1)
-      .max(2000000000)
+      .max(2147483647)
       .describe("THB satang, 100 per baht"),
     currency: z.literal("THB").default("THB"),
     customer: z.string().trim().min(1).max(100),
@@ -152,6 +152,13 @@ export async function propose(
       orderId: link.orderId,
       customer: link.order.customer,
       amount: link.order.amount,
+      ...(kind === "regenerate_payment_link"
+        ? {
+            currency: link.order.currency,
+            methods: link.methods.split(","),
+            expires: new Date(Date.now() + day).toISOString(),
+          }
+        : {}),
     };
   }
   return db.agentAction.create({
@@ -202,6 +209,11 @@ export async function decide(actionId: string, approve: boolean, m = scope) {
       if (!link.activeSlot || link.order.status !== "OPEN")
         return finish("STALE", { summary: "Order paid or link superseded" });
       if (action.kind === "regenerate_payment_link") {
+        const expires = new Date(
+          p.expires ?? new Date(+action.createdAt + day),
+        );
+        if (+expires <= Date.now())
+          return finish("STALE", { summary: "Replacement proposal expired" });
         await tx.link.update({
           where: { id: link.id },
           data: { activeSlot: null },
@@ -211,11 +223,15 @@ export async function decide(actionId: string, approve: boolean, m = scope) {
             orderId: link.orderId,
             activeSlot: link.orderId,
             methods: link.methods,
-            expires: new Date(Date.now() + day),
+            expires,
           },
         });
         result = await getLink(replacement.id, m, tx);
       } else if (action.kind === "save_notification") {
+        if (+link.expires <= Date.now())
+          return finish("STALE", {
+            summary: "Checkout expired before reminder approval",
+          });
         await tx.notification.create({
           data: {
             merchant: m,

@@ -43,7 +43,7 @@ export function paymentMethods(
   };
 }
 const boundary =
-  /\s+(?=(?:แต่|ยัง|อย่า|ก่อน|ขอ(?:เก็บ|รับ|เปลี่ยน|เฉพาะ|ใช้| QR)|ไม่(?:เอา|รับ|ใช้|ต้องการ|ส่ง)|จ่าย|ชำระ|เก็บ|รับทั้ง|รับบัตร|รับผ่าน|รองรับ|หมดอายุ|ภายใน|อีก\s*\d|พรุ่งนี้|นัดรับ|ส่วนราคา|สำหรับ|ออเดอร์|order\b|by\b|tomorrow\b|using\b|via\b|within\b|for\b|only\b|but\b|without\b|don.t\b|do not\b|no\b|in \d|expires?\b|\d|(?:บัตร|QR|cards?)\b))/i;
+  /\s+(?=(?:ค่า|มัดจำ|แต่|ยัง|อย่า|ก่อน|ขอ(?:เก็บ|รับ|เปลี่ยน|เฉพาะ|ใช้| QR)|ไม่(?:เอา|รับ|ใช้|ต้องการ|ส่ง)|จ่าย|ชำระ|เก็บ|รับทั้ง|รับบัตร|รับผ่าน|รองรับ|หมดอายุ|ภายใน|อีก\s*\d|พรุ่งนี้|นัดรับ|ส่วนราคา|สำหรับ|ออเดอร์|order\b|by\b|tomorrow\b|using\b|via\b|within\b|for\b|only\b|but\b|without\b|don.t\b|do not\b|no\b|in \d|expires?\b|\d|(?:บัตร|QR|cards?)\b))/i;
 export function customerName(text: string) {
   const match =
     text.match(
@@ -60,7 +60,7 @@ export function description(text: string) {
     /(?:สำหรับ\s*|(?:description|description is)[: ]+)(.+?)(?=\s*(?:\d|[,;]|$))/i,
   )?.[1];
   const thai = text.match(
-    /((?:ค่า(?!จองจาก)|เงินมัดจำ|มัดจำ)[^,;\n]*?)(?=\s*(?:ให้|จาก|ของคุณ|\d|แต่|$))/,
+    /((?:ค่า(?!จองจาก)|เงินมัดจำ|มัดจำ)[^,;\n]*?)(?=\s*(?:ให้|จาก|ของคุณ|ลูกค้า|ลิงก์|รับเงิน|เก็บเงิน|จ่าย|ชำระ|\d|แต่|$))/,
   )?.[1];
   const english = text.match(
     /\bfor (?!customer\b|client\b)(?:a |an )?(.+?)(?:,|\s+(?:for|THB|฿)|$)/i,

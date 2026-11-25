@@ -71,7 +71,11 @@ export function resolveDraft(
         }
       }
     }
-    const amount = amountUpdate(t, i > 0 && !d.amount);
+    const amount = amountUpdate(
+      t,
+      i > 0 && !d.amount,
+      !unclearPayer || merchantIntent,
+    );
     if (amount) {
       d.amount = "amount" in amount ? amount.amount : undefined;
       d.moneyQuestion = "question" in amount ? amount.question : undefined;

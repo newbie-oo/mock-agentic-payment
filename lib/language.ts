@@ -2,7 +2,7 @@ export const isThai = (text: string) => /[ก-๙]/.test(text);
 export function normalize(text: string) {
   return text
     .replace(/[๐-๙]/g, (d) => String(d.charCodeAt(0) - "๐".charCodeAt(0)))
-    .replace(/หลิงก์|ลิ้ง(?:ค์|ก์)?|ลิงค์/g, "ลิงก์")
+    .replace(/หลิงก์|ลิ้ง(?:ค์|ก์)?|ลิงค์|ลิงก(?!์)|ลิงค(?!์)/g, "ลิงก์")
     .replaceAll("เกบตังค์", "เก็บเงิน");
 }
 export function scopeReply(prompt: string, context = prompt) {

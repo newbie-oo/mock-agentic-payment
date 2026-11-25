@@ -52,6 +52,7 @@ function decimalBaht(value: string) {
 export function amountUpdate(
   text: string,
   awaiting: boolean,
+  allowUnitless = true,
 ): AmountUpdate | undefined {
   if (
     new RegExp(
@@ -76,6 +77,40 @@ export function amountUpdate(
       ),
     ))
       values.add(decimalBaht(m[1] ?? m[2]));
+    if (allowUnitless) {
+      for (const m of text.matchAll(
+        new RegExp(
+          "(?<![\\p{L}\\p{M}\\d.,:-])(" + num + ")(?![\\p{L}\\p{M}\\d.,:%-])",
+          "gu",
+        ),
+      )) {
+        const before = text.slice(0, m.index).trimEnd();
+        const after = text.slice(m.index + m[0].length).trimStart();
+        if (
+          /^(?:ชิ้น|คน|วัน|ชม|ชั่วโมง|นาที|โมง|hours?|days?|items?|units?|%)/i.test(
+            after,
+          )
+        )
+          continue;
+        if (
+          /(?:อ้างอิง|เลข|รหัส|บิล|โทร|เวลา|นัด|ref|reference|invoice|phone|order|qty|quantity|within)\s*[:#]?\s*$/i.test(
+            before,
+          )
+        )
+          continue;
+        const moneyLabel =
+          /(?:รับเงิน|เก็บเงิน|ลิงก์|payment link|ยอด(?:สุทธิ)?|คิดเงิน|เก็บ(?:แค่)?|ลดเหลือ|เปลี่ยนเป็น|เรียกเก็บ|\bcollect|\bcharge|\bamount|\bmake it)\s*[:=]?\s*$/i.test(
+            before,
+          );
+        const fee = before.match(/ค่า([\p{L}\p{M} ]+)$/u)?.[1];
+        const feeLabel =
+          fee &&
+          !/(?:อ้างอิง|รหัส|เลข|โทร|นัด|ภายใน|จำนวน|เวลา|reference|phone|qty|order|bill|code|ref)/i.test(
+            fee,
+          );
+        if (moneyLabel || feeLabel) values.add(decimalBaht(m[1]));
+      }
+    }
     for (const m of text.matchAll(spoken)) {
       const value = thaiInteger(m[1]);
       // Never accept just the fractional suffix of a spoken price.

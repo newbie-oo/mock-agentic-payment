@@ -238,6 +238,26 @@ export const corrections = [
 ];
 export const variants = [
   [
+    "merchant-shorthand",
+    "ลิ้งรับเงิน 1000 ลูกค้า A ค่า gas",
+    { amount: 100000, name: "A", description: "ค่า gas", methods: ["QR"] },
+  ],
+  [
+    "reorder-shorthand",
+    "ลูกค้า B ค่า parking 275 ลิงค์รับเงิน",
+    { amount: 27500, name: "B", description: "ค่า parking", methods: ["QR"] },
+  ],
+  [
+    "reference-shorthand",
+    "ลิ้งรับเงิน ลูกค้า M ค่า gas เลขอ้างอิง 1000",
+    { status: "NEEDS_INPUT", words: ["ยอดเงิน"] },
+  ],
+  [
+    "unclear-shorthand",
+    "ลิ้งรับเงิน 1000 หรือ 1800 ลูกค้า A ค่า gas",
+    { status: "NEEDS_INPUT", words: ["ยอดสุทธิ"] },
+  ],
+  [
     "alternatives-en",
     "Create a payment link for flowers, 960 or 980 baht for customer Kai",
     { status: "NEEDS_INPUT", words: ["one final amount"] },

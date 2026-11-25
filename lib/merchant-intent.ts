@@ -28,6 +28,20 @@ export const intentSchema = z.object({
     .describe(
       "For clarify or inform: a concise answer in the merchant's language",
     ),
+  payerBinding: z
+    .enum(["identified", "inferred"])
+    .optional()
+    .describe(
+      "For every create or confirm: identified when explicitly labelled customer/payer, or directly the object of an instruction to charge them. A short name merely adjacent to a pay verb and fee is inferred.",
+    ),
+  requestQuote: z
+    .string()
+    .trim()
+    .max(250)
+    .optional()
+    .describe(
+      "For create: quote the user's verb phrase that requests merchant collection or issuing an invoice/link. Merely naming a link, a fee, or a third party paying is not an instruction to collect; omit then.",
+    ),
   managementQuote: z
     .string()
     .trim()
@@ -167,6 +181,15 @@ export function interpret(
   }
   if (intent.intent !== "create" && intent.intent !== "confirm")
     return { intent };
+  if (c.turn === 0) {
+    if (intent.payerBinding === "inferred") intent.intent = "confirm";
+    else if (
+      intent.payerBinding === "identified" &&
+      intent.requestQuote &&
+      c.latest.includes(intent.requestQuote)
+    )
+      intent.intent = "create";
+  }
   const terms = intent.terms;
   if (!terms) throw Error("Provider omitted the checkout details");
   const amountOnly =

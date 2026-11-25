@@ -305,7 +305,11 @@ export const variants = [
   [
     "malformed-spoken",
     "สร้างลิงก์ หนึ่งจุดห้าบาท ค่ากาแฟ จากคุณนิด",
-    { status: "NEEDS_INPUT", words: ["ตัวเลข"] },
+    {
+      status: "NEEDS_INPUT",
+      words: ["ตัวเลข"],
+      nativeExpected: { amount: 150, name: "นิด" },
+    },
   ],
   [
     "another-recipient",

@@ -281,7 +281,10 @@ try {
           "Issue an invoice to Rin for printing. Use THB 0.005 exactly.",
         );
         assert.equal(pending(r).length, 0);
-        assert.match(r.summary, /THB|decimal|satang|precision|amount/i);
+        assert.match(
+          r.summary,
+          /THB|decimal|satang|precision|amount|สตางค์|ทศนิยม/i,
+        );
       },
     ],
     [
@@ -328,8 +331,11 @@ try {
       },
     ],
   ];
-  for (let i = 0; i < tests.length; i += 3)
-    await Promise.all(tests.slice(i, i + 3).map(([n, f]) => scenario(n, f)));
+  const selected = process.env.LIVE_CASES
+    ? tests.filter(([name]) => process.env.LIVE_CASES.split(",").includes(name))
+    : tests;
+  for (let i = 0; i < selected.length; i += 3)
+    await Promise.all(selected.slice(i, i + 3).map(([n, f]) => scenario(n, f)));
   assert.deepEqual(ledger(), initial);
   const receipts = [];
   for (const a of traces) {

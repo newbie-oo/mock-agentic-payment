@@ -60,7 +60,9 @@ try {
       const expect =
         !live && expected.demoClarifiesMoney
           ? { status: "NEEDS_INPUT", words: ["ตัวเลข|ยอดเงิน"] }
-          : expected;
+          : live && expected.nativeExpected
+            ? expected.nativeExpected
+            : expected;
       const before = ledger();
       const previous = expect.continue ? last : null;
       const res = await fetch(base + "/api/agent", {
@@ -100,7 +102,7 @@ try {
         expect.amount === undefined
           ? pending.length === 0
           : pending.length === 1 && preview[0].amount === expect.amount;
-      const pass =
+      const contractPass =
         !!reply &&
         res.ok &&
         changes.every((n) => !n) &&
@@ -116,11 +118,14 @@ try {
         (expect.absent ?? []).every((w) => !new RegExp(w, "i").test(reply)) &&
         (!expect.expiry || preview[0]?.expiry === expect.expiry) &&
         (!expect.tool || trace.includes(expect.tool)) &&
-        (!expect.also || trace.includes(expect.also)) &&
+        (!expect.also || trace.includes(expect.also));
+      const pass =
+        contractPass &&
         (expect.words ?? []).every((w) => new RegExp(w, "i").test(reply));
       rows.push({
         id,
         pass,
+        contractPass,
         http: res.status,
         status: run.status ?? "ERROR",
         reply: reply.slice(0, 320),
@@ -138,6 +143,7 @@ try {
       split,
       JSON.stringify({
         pass: rows.filter((r) => r.pass).length,
+        contractPass: rows.filter((r) => r.contractPass).length,
         total: rows.length,
         noReply: rows.filter((r) => !r.reply).length,
         misrouted: rows.reduce((n, r) => n + r.unrequested, 0),

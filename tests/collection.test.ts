@@ -732,6 +732,43 @@ test("HTTP company names and every requested method survive approval and link re
   }
 });
 
+test("offline HTTP excludes a payment-method clause from personal and multiword company names across edits", async () => {
+  for (const [prompt, customer, amount] of [
+    ["ออกลิงก์ค่าคอร์ส 725 บาทให้ลูกค้าชื่อแพร รับ QR เท่านั้น", "แพร", 72500],
+    ["เก็บเงินค่าเช่า 810 บาท ให้ลูกค้าบริษัท ดอกแก้ว รับเฉพาะ QR", "บริษัท ดอกแก้ว", 81000],
+  ] as const) {
+    const first = await api("agent", { prompt });
+    assert.equal(first.code, 201);
+    for (const [run, method] of [
+      [first.value, "QR"],
+      [
+        (
+          await api("agent", {
+            runId: first.value.id,
+            prompt: "เปลี่ยนเป็นบัตรเท่านั้น ไม่เอา QR",
+          })
+        ).value,
+        "CARD",
+      ],
+    ] as const) {
+      assert.equal(run.mode, "Deterministic demo");
+      assert.equal(run.status, "AWAITING_APPROVAL");
+      const active = run.actions.filter(
+        (a: { status: string }) => a.status === "PROPOSED",
+      );
+      assert.equal(active.length, 1);
+      assert.deepEqual(
+        [
+          active[0].payload.customer,
+          active[0].amountMinor,
+          active[0].payload.methods,
+        ],
+        [customer, amount, [method]],
+      );
+    }
+  }
+});
+
 test("native run persists turns, tool budget and deadline across clarifications", async (t) => {
   process.env.OPENAI_API_KEY = crypto.randomUUID();
   let stage = 0;

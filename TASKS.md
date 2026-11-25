@@ -69,3 +69,7 @@ Replayed the provider's recorded intent from QA run `cmwvjco00000dlhz9oiysdqck`.
 The HTTP and mobile Chrome regression exercises a read-only recap for บี, ฿4,500, ค่า gas, QR and the original Bangkok expiry. After reload the same run accepts a reply or an explicit request to prepare a preview. The prior action remains rejected. The database contains zero orders, links, attempts and notifications up to approval. Approval and retry return the same link and leave one order, one link, zero attempts and zero notifications. The unit regression covers cancellation, instructions-only, unsupported terms and a held acknowledgement.
 
 Run `npm run build`, then `CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' node scripts/held-recap-smoke.mjs` for the recorded native protocol fixture. Add `--offline` for the deterministic adapter. Both browser checks passed against disposable SQLite files. The independent live check uses the same command with `--live` when QA has reserved the provider.
+
+### Offline payer field (card 5)
+
+On the production HTTP endpoint the deterministic adapter recorded `แพร รับ` and `บริษัท ดอกแก้ว รับเฉพาะ`. The customer-field boundary now recognizes a payment acceptance clause before a named method. Repeating both HTTP requests returned `แพร` (72,500 satang) and `บริษัท ดอกแก้ว` (81,000 satang). The test `offline HTTP excludes a payment-method clause from personal and multiword company names across edits` also changes each preview from QR to CARD and checks that the full payer name and amount survive.

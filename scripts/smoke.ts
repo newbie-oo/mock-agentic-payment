@@ -36,6 +36,33 @@ try {
   });
   try {
     const page = await browser.newPage();
+    await page.goto(base + "/assistant");
+    await page.waitForLoadState("networkidle");
+    const field = page.getByLabel("Ask PayPilot");
+    await field.fill("ต้องการซื้อบ้าน ภายใน 2 ชม ราคา 5000");
+    await field.press("Shift+Enter");
+    assert.ok((await field.inputValue()).endsWith("\n"));
+    const pendingResponse = page.waitForResponse((r) =>
+      r.url().endsWith("/api/agent"),
+    );
+    await field.press("Enter");
+    const clarification = await (await pendingResponse).json();
+    assert.equal(clarification.status, "NEEDS_INPUT");
+    await page.getByRole("heading", { name: "Clarification needed" }).waitFor();
+    assert.match(await page.locator(".summary").innerText(), /ซื้อบ้านเอง/);
+    await page.getByLabel("Reply to PayPilot").fill("ใช่ เก็บค่าจองจากสมชาย");
+    const followResponse = page.waitForResponse((r) =>
+      r.url().endsWith("/api/agent"),
+    );
+    await page.getByRole("button", { name: "Send reply" }).click();
+    const follow = await (await followResponse).json();
+    assert.equal(follow.runId, clarification.runId);
+    assert.equal(
+      follow.actions.find((a: { status: string }) => a.status === "PROPOSED")
+        .amountMinor,
+      500000,
+    );
+    await page.getByRole("button", { name: "Reject", exact: true }).click();
     await page.goto(base);
     const revenue = () =>
       page
@@ -105,11 +132,45 @@ try {
       }),
     );
     await page.setViewportSize({ width: 390, height: 844 });
-    assert.ok(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
+    // ResponsiveContainer redraws on ResizeObserver after the viewport changes.
+    await page.waitForFunction(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+      undefined,
+      { timeout: 5000 },
     );
+    for (const prompt of [
+      "สร้างลิงก์รับเงินค่าออกแบบ 5,000 บาท ให้ลูกค้าบริษัท แสงเช้า รับทั้งบัตรและ QR",
+      "สร้างลิงก์เก็บเงินค่าออกแบบ 5000 บาท ให้ลูกค้าชื่อบริษัท แสงเช้า ชำระผ่าน QR และบัตร",
+    ]) {
+      const request = await page.request.post(base + "/api/agent", {
+        data: { prompt },
+      });
+      const run = await request.json();
+      const proposal = run.actions.find(
+        (a: { status: string }) => a.status === "PROPOSED",
+      );
+      assert.equal(proposal.payload.customer, "บริษัท แสงเช้า");
+      assert.equal(proposal.amountMinor, 500000);
+      assert.deepEqual(proposal.payload.methods.sort(), ["CARD", "QR"]);
+      const decision = await page.request.post(base + "/api/decision", {
+        data: { actionId: proposal.id, approve: true },
+      });
+      const verified = await decision.json();
+      const link = await (
+        await page.request.get(base + "/api/link?id=" + verified.result.id)
+      ).json();
+      assert.equal(link.order.customer, "บริษัท แสงเช้า");
+      assert.equal(link.order.amount, 500000);
+      assert.deepEqual(link.methods.split(",").sort(), ["CARD", "QR"]);
+      console.log(
+        "Company readback",
+        JSON.stringify({
+          customer: link.order.customer,
+          amount: link.order.amount,
+          methods: link.methods,
+        }),
+      );
+    }
     console.log(
       "Browser verified two reminders, replacement checkout, Bangkok creation, single ฿5,000 settlement and mobile overview.",
     );

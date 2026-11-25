@@ -22,8 +22,8 @@ export const registry = {
   ),
   list_transactions: tool(
     "Page of recent attempts with current order status.",
-    s.pageInput,
-    (a, c) => s.transactions(a.page, c.m),
+    s.pageInput.extend({ customer: z.string().min(1).max(100).optional() }),
+    (a, c) => s.transactions(a.page, c.m, a.customer),
   ),
   get_transaction: tool("Read one attempt.", s.txInput, (a, c) =>
     db.attempt.findFirstOrThrow({

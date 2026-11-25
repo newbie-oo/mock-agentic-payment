@@ -561,3 +561,129 @@ test("fixed Bangkok native create, matching tool_call_id, clarification and exac
     delete process.env.OPENAI_API_KEY;
   }
 });
+
+test("buyer clarification persists price and deadline without proposing or paying", async () => {
+  const before = await db.order.count();
+  const first = (
+    await api("agent", { prompt: "ต้องการซื้อบ้าน ภายใน 2 ชม ราคา 5000" })
+  ).value;
+  assert.equal(first.status, "NEEDS_INPUT");
+  assert.match(first.summary, /5000/);
+  assert.match(first.summary, /ซื้อบ้านเอง/);
+  assert.match(first.summary, /2 ชั่วโมง/);
+  const nameOnly = (
+    await api("agent", { runId: first.runId, prompt: "ลูกค้าชื่อสมชาย" })
+  ).value;
+  assert.equal(nameOnly.status, "NEEDS_INPUT");
+  assert.ok(
+    !nameOnly.actions.some((a: { status: string }) => a.status === "PROPOSED"),
+  );
+  const confirmed = (
+    await api("agent", { runId: first.runId, prompt: "ใช่ เก็บค่าจองจากสมชาย" })
+  ).value;
+  assert.equal(confirmed.runId, first.runId);
+  const preview = confirmed.actions.find(
+    (a: { status: string }) => a.status === "PROPOSED",
+  );
+  assert.equal(preview.amountMinor, 500000);
+  assert.equal(preview.payload.customer, "สมชาย");
+  assert.equal(
+    Date.parse(preview.payload.expires) - Date.parse(first.createdAt),
+    7200000,
+  );
+  assert.equal(await db.order.count(), before);
+  const cancelled = (
+    await api("agent", { runId: first.runId, prompt: "ไม่เอาแล้ว ยกเลิก" })
+  ).value;
+  assert.equal(
+    cancelled.actions.find((a: { id: string }) => a.id === preview.id).status,
+    "REJECTED",
+  );
+  assert.equal(
+    (await api("decision", { actionId: preview.id, approve: true })).value
+      .status,
+    "REJECTED",
+  );
+});
+test("provider fixture blocks writes for read-only turns and clarifies buying before tool access", async (t) => {
+  let calls = 0;
+  process.env.OPENAI_API_KEY = crypto.randomUUID();
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, opts: { body: string }) => {
+      const body = JSON.parse(opts.body);
+      calls++;
+      assert.ok(
+        !body.tools.some(
+          (x: { function: { name: string } }) =>
+            x.function.name === "create_payment_link",
+        ),
+      );
+      return Response.json({
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: "unexpected",
+                  type: "function",
+                  function: { name: "create_payment_link", arguments: "{}" },
+                },
+              ],
+            },
+          },
+        ],
+      });
+    },
+  );
+  try {
+    const first = (
+      await api("agent", {
+        prompt: "I want to buy a house within 2 hours, price 5000",
+      })
+    ).value;
+    assert.equal(first.mode, "Native provider");
+    assert.equal(first.status, "NEEDS_INPUT");
+    assert.equal(calls, 0);
+    const buyer = (
+      await api("agent", { runId: first.id, prompt: "I am the buyer" })
+    ).value;
+    assert.match(buyer.summary, /Buying a home/);
+    assert.equal(calls, 0);
+    const read = await api("agent", {
+      prompt: "What came in today? Just looking.",
+    });
+    assert.equal(read.code, 502);
+    assert.equal(calls, 1);
+    assert.ok(
+      !read.value.actions.some(
+        (a: { status: string }) => a.status === "PROPOSED",
+      ),
+    );
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test("HTTP company names and every requested method survive approval and link readback", async () => {
+  for (const prompt of [
+    "สร้างลิงก์รับเงินค่าออกแบบ 5,000 บาท ให้ลูกค้าบริษัท แสงเช้า รับทั้งบัตรและ QR",
+    "สร้างลิงก์เก็บเงินค่าออกแบบ 5000 บาท ให้ลูกค้าชื่อบริษัท แสงเช้า ชำระผ่าน QR และบัตร",
+  ]) {
+    const result = await api("agent", { prompt });
+    assert.equal(result.code, 201);
+    const a = result.value.actions.find(
+      (a: { status: string }) => a.status === "PROPOSED",
+    );
+    assert.equal(a.payload.customer, "บริษัท แสงเช้า");
+    assert.equal(a.amountMinor, 500000);
+    assert.deepEqual(a.payload.methods.sort(), ["CARD", "QR"]);
+    const approved = await api("decision", { actionId: a.id, approve: true });
+    const link = (await api("link?id=" + approved.value.result.id)).value;
+    assert.equal(link.order.customer, "บริษัท แสงเช้า");
+    assert.equal(link.order.amount, 500000);
+    assert.deepEqual(link.methods.split(",").sort(), ["CARD", "QR"]);
+  }
+});

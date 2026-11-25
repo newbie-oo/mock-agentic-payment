@@ -45,9 +45,9 @@ export function orders(page = 1, unpaid = false, m = scope) {
     take: size,
   });
 }
-export function transactions(page = 1, m = scope) {
+export function transactions(page = 1, m = scope, customer?: string) {
   return db.attempt.findMany({
-    where: { merchant: m },
+    where: { merchant: m, ...(customer ? { order: { customer } } : {}) },
     include: { order: true },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * size,
@@ -106,7 +106,9 @@ export async function metrics(m = scope) {
   };
 }
 export function runRecord(prompt: string, mode: string, m = scope) {
-  return db.agentRun.create({ data: { merchant: m, prompt, mode } });
+  return db.agentRun.create({
+    data: { merchant: m, prompt, mode, createdAt: new Date(Date.now()) },
+  });
 }
 export async function event(
   runId: string,

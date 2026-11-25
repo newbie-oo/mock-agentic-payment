@@ -61,7 +61,9 @@ export function runDTO(run: AgentRun & { actions: AgentAction[] }) {
     ...run,
     runId: run.id,
     errorCode: error ? "AGENT_FAILED" : null,
-    summary: [run.summary, ...auditSummary].join("\n"),
+    summary: [run.summary.replace(/^NEED_INPUT\s*/, ""), ...auditSummary].join(
+      "\n",
+    ),
     actions,
     createdAt: run.createdAt.toISOString(),
     status,

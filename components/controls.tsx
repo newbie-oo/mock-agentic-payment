@@ -1,6 +1,6 @@
 "use client";
 import { satang } from "@/lib/money";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { ActionDTO as AgentAction, RunDTO as Run } from "@/lib/contract";
 import { Button } from "./ui/button";
@@ -126,18 +126,24 @@ export function Assistant({
     [progress, show] = useState("");
   const task = useTask(),
     router = useRouter();
+  const canReply =
+    run?.status === "NEEDS_INPUT" || run?.status === "AWAITING_APPROVAL";
+  const resultHeading = useRef<HTMLHeadingElement>(null);
+  const [submission, setSubmission] = useState(0);
+  useEffect(() => {
+    if (submission) resultHeading.current?.focus();
+  }, [submission]);
   async function send(value: string) {
     await task.work(async () => {
-      show("Reading merchant records…");
+      show("Processing your request…");
       set(
         await post<Run>("agent", {
           prompt: value,
-          ...(run?.status === "NEEDS_INPUT" && value !== hero
-            ? { runId: run.id }
-            : {}),
+          ...(canReply && run && value !== hero ? { runId: run.id } : {}),
         }),
       );
       setPrompt("");
+      setSubmission((n) => n + 1);
       router.refresh();
     });
   }
@@ -185,16 +191,48 @@ export function Assistant({
           void send(prompt);
         }}
       >
-        <label htmlFor="prompt">Ask PayPilot</label>
+        <label htmlFor="prompt">
+          {run?.status === "NEEDS_INPUT" ? "Reply to PayPilot" : "Ask PayPilot"}
+        </label>
+        {canReply && (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={task.busy}
+            onClick={() => {
+              set(null);
+              setPrompt("");
+            }}
+          >
+            Start a new request
+          </Button>
+        )}
         <textarea
           id="prompt"
           required
           maxLength={2000}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
+          aria-describedby="composer-help"
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing &&
+              e.nativeEvent.keyCode !== 229
+            ) {
+              e.preventDefault();
+              if (!task.busy) e.currentTarget.form?.requestSubmit();
+            }
+          }}
           placeholder="สร้างลิงก์รับเงินค่าทำเว็บไซต์ 5,000 บาท ให้ลูกค้าสมชาย หมดอายุพรุ่งนี้"
         />
-        <Button disabled={task.busy}>Run assistant</Button>
+        <small id="composer-help">
+          Enter to send · Shift+Enter for a new line
+        </small>
+        <Button type="submit" disabled={task.busy}>
+          {run?.status === "NEEDS_INPUT" ? "Send reply" : "Run assistant"}
+        </Button>
       </form>
       {task.busy && <p role="status">{progress}</p>}
       <p role="alert">{task.error}</p>
@@ -203,7 +241,11 @@ export function Assistant({
           <small>
             {run.mode} · {run.status} · {localDate(run.createdAt)}
           </small>
-          <h2>{run.prompt}</h2>
+          <h2 ref={resultHeading} tabIndex={-1}>
+            {run.status === "NEEDS_INPUT"
+              ? "Clarification needed"
+              : "Assistant response"}
+          </h2>
           <p className="summary">{run.summary}</p>
           <div className="row">
             <strong>

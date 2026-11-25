@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "reset": "prisma migrate reset --force && tsx scripts/seed.ts",
+    "reset": "prisma migrate deploy && tsx scripts/seed.ts",
     "smoke": "tsx scripts/smoke.ts",
     "provider": "tsx scripts/provider.ts"
   },

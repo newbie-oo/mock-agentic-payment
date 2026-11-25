@@ -54,6 +54,7 @@ try {
     assert.equal(await page.getByText(/Verified saved reminder/).count(), 2);
     await page.getByText("Open verified checkout").first().click();
     await page.getByRole("button", { name: "Simulate checkout" }).waitFor();
+    const started = performance.now();
     const api = await page.request.post(base + "/api/agent", {
       data: {
         prompt: "สร้างลิงก์รับเงินค่าทำเว็บไซต์ 5,000 บาท ให้ลูกค้าสมชาย หมดอายุพรุ่งนี้",
@@ -91,6 +92,18 @@ try {
     await page.getByText("Paid in full").waitFor();
     await page.goto(base);
     assert.equal((await revenue()) - before, 5000);
+    console.log(
+      JSON.stringify({
+        runId: run.id,
+        actionId: action.id,
+        checkoutUrl: verified.checkoutUrl,
+        revenueBeforeBaht: before,
+        revenueAfterBaht: await revenue(),
+        happyPathSeconds: Number(
+          ((performance.now() - started) / 1000).toFixed(2),
+        ),
+      }),
+    );
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(
       await page.evaluate(

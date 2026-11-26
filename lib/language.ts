@@ -13,16 +13,6 @@ export function normalize(text: string) {
     .replace(/หลิงก์|ลิ้ง(?:ค์|ก์)?|ลิงค์|ลิงก(?!์)|ลิงค(?!์)/g, "ลิงก์")
     .replaceAll("เกบตังค์", "เก็บเงิน");
 }
-export function explicitlyHoldsPreview(text: string) {
-  return (
-    /พัก(?:รายการ|ข้อเสนอ|ไว้)|รอก่อน|ทวน(?:ข้อมูล|รายละเอียด)?ก่อน|(?:อย่าเพิ่ง|ยังไม่ต้อง|ไม่ต้อง|ห้าม)\s*(?:เตรียม|สร้าง|ออก)(?:ข้อเสนอ|พรีวิว|ตัวอย่าง|ลิงก์|รายการ|$)/i.test(
-      text,
-    ) ||
-    /\b(?:hold off|just recap|recap (?:only|first)|(?:pause|hold|defer|(?:do not|don['’]t) (?:prepare|stage|create|make|issue|generate)) (?:a |the |this )?(?:preview|proposal|checkout|(?:payment )?link))\b/i.test(
-      text,
-    )
-  );
-}
 export function scopeReply(prompt: string, context = prompt) {
   const thai = isThai(prompt);
   if (

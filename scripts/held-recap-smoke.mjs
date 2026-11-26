@@ -51,9 +51,11 @@ const fixture = createServer(async (req, res) => {
             payerBinding: "identified",
             requestQuote: latest,
           }
-      : name === "read_held_terms"
-        ? revised
-        : {};
+      : name === "read_preview_instruction"
+        ? { deferPreviewQuote: "ยังไม่ต้องเตรียมข้อเสนอ" }
+        : name === "read_held_terms"
+          ? revised
+          : {};
   const message = name
     ? {
         content: null,

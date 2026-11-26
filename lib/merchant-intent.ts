@@ -8,11 +8,7 @@ import {
 } from "./money";
 import { priorPurpose, type ChatMessage } from "./native-history";
 import { paymentMethods } from "./payment-fields";
-import {
-  startsAsPurchase,
-  requestsFullPrice,
-  explicitlyHoldsPreview,
-} from "./language";
+import { startsAsPurchase, requestsFullPrice } from "./language";
 import {
   confirmationPrefix,
   heldPrefix,
@@ -22,6 +18,14 @@ import {
 
 // Only the provider interprets free-form merchant language. This first tool
 // selects permissions for the current turn. It has no business side effects.
+const holdEvidence = z
+  .string()
+  .trim()
+  .min(1)
+  .max(300)
+  .describe(
+    "Copy the exact clause in the latest merchant message asking to postpone preparation of the preview. Exclude the deadline, payer, purpose and other checkout details.",
+  );
 export const intentSchema = z.object({
   intent: z
     .enum([
@@ -60,6 +64,7 @@ export const intentSchema = z.object({
     .describe(
       "True only when the merchant explicitly asks to postpone preparing the preview. Correcting or excluding a deadline or payment method does not request a hold. For a held recap include the revised terms. Pure how-to uses guide.",
     ),
+  deferPreviewQuote: holdEvidence.optional(),
   payerBinding: z
     .enum(["identified", "inferred"])
     .optional()
@@ -144,6 +149,21 @@ export const intentTool = {
     }),
   },
 };
+export const timingEvidence = z
+  .object({ deferPreviewQuote: holdEvidence.nullable() })
+  .strict();
+export const timingTool = {
+  type: "function",
+  function: {
+    name: "read_preview_instruction",
+    description:
+      "Read the latest merchant message only. If they explicitly want to wait before preparing a checkout preview, quote that separate instruction. Otherwise return null. Timing of payment is distinct from timing of preview preparation.",
+    parameters: z.toJSONSchema(timingEvidence, {
+      io: "input",
+      target: "draft-7",
+    }),
+  },
+};
 export const heldTool = {
   type: "function",
   function: {
@@ -182,7 +202,13 @@ type Context = {
 export function interpret(
   args: unknown,
   c: Context,
-): { intent: MerchantIntent; summary?: string; needsHeldTerms?: boolean } {
+  timingReviewed = false,
+): {
+  intent: MerchantIntent;
+  summary?: string;
+  needsHeldTerms?: boolean;
+  needsHoldEvidence?: boolean;
+} {
   const answer = (intent: MerchantIntent, summary: string) => ({
     intent,
     summary,
@@ -211,11 +237,6 @@ export function interpret(
   if (!result.success) throw Error("Provider returned invalid intent fields");
   const intent = result.data;
   if (
-    intent.deferPreview ||
-    (c.priorPreview && ["create", "confirm"].includes(intent.intent))
-  )
-    intent.deferPreview = explicitlyHoldsPreview(c.latest);
-  if (
     intent.intent === "collect" &&
     (!intent.managementQuote || !c.latest.includes(intent.managementQuote))
   )
@@ -240,6 +261,38 @@ export function interpret(
         ? "ไปที่ Payment Links แล้วเลือกสร้างลิงก์ กรอกชื่อลูกค้า รายการ ยอดเงิน วิธีชำระและวันหมดอายุ ตรวจรายละเอียดแล้วกดอนุมัติ จึงจะได้ลิงก์สำหรับคัดลอก"
         : "Open Payment Links, choose Create, then enter the customer, purpose, THB amount, payment methods and expiry. Review the preview and approve it to receive a checkout URL you can copy.",
     );
+  }
+  if (
+    intent.deferPreview &&
+    ["create", "confirm", "inform", "clarify"].includes(intent.intent)
+  ) {
+    const quote = intent.deferPreviewQuote;
+    // A deadline or a value copied from the checkout cannot also justify holding it.
+    const terms = intent.terms ?? c.priorPreview;
+    const quotedFields = [
+      intent.expiryChangeQuote,
+      intent.purposeChangeQuote,
+      terms?.customer,
+      terms?.description,
+      terms?.currency,
+      ...(terms?.methods ?? []),
+    ];
+    const available = quotedFields.reduce<string>(
+      (text, field) => (field ? text.replaceAll(field, "\0") : text),
+      c.latest,
+    );
+    const grounded =
+      quote &&
+      /\p{L}/u.test(quote) &&
+      !quote.includes("\0") &&
+      available.includes(quote);
+    if (!grounded) {
+      if (!timingReviewed) return { intent, needsHoldEvidence: true };
+      return ask(
+        "ต้องการพักรายการนี้ไว้ก่อน หรือเตรียมข้อเสนอเพื่อตรวจสอบ?",
+        "Should I keep these changes on hold or prepare a preview for review?",
+      );
+    }
   }
   const requestTarget = () =>
     ask(

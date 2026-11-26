@@ -1286,8 +1286,8 @@ test("the native interpretation can edit a complete reviewed preview without rep
   };
   assert.equal(interpret(decision, ctx).intent.intent, "create");
   assert.equal(
-    interpret({ ...decision, deferPreview: true }, ctx).intent.intent,
-    "create",
+    interpret({ ...decision, deferPreview: true }, ctx).needsHoldEvidence,
+    true,
   );
   const english = "Use two hours; don't make it two days.";
   const expiryEdit = {
@@ -1297,14 +1297,17 @@ test("the native interpretation can edit a complete reviewed preview without rep
     expiryOnlyUtc: new Date(Date.now() + 7200000).toISOString(),
   };
   assert.equal(
-    interpret(expiryEdit, { ...ctx, latest: english }).intent.intent,
-    "create",
+    interpret(expiryEdit, { ...ctx, latest: english }).needsHoldEvidence,
+    true,
   );
   assert.ok(
-    interpret(expiryEdit, {
-      ...ctx,
-      latest: english + " Hold the preview.",
-    }).summary?.startsWith("HELD_INPUT "),
+    interpret(
+      { ...expiryEdit, deferPreviewQuote: "Hold the preview." },
+      {
+        ...ctx,
+        latest: english + " Hold the preview.",
+      },
+    ).summary?.startsWith("HELD_INPUT "),
   );
   assert.equal(
     interpret(decision, { ...ctx, priorTerms: snapshot, priorPreview: null })
@@ -1336,6 +1339,7 @@ test("held recap uses grounded terms, leaves the thread open, and keeps guides a
   const hold = {
     intent: "inform",
     deferPreview: true,
+    deferPreviewQuote: "ยังไม่ต้องเตรียมข้อเสนอ",
     message: "จะทวนข้อมูลที่แก้ไขให้ก่อน โดยยังไม่จัดเตรียมข้อเสนอ",
   };
   assert.equal(interpret(hold, ctx).needsHeldTerms, true);
@@ -1414,6 +1418,8 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
     description: "ค่าสมาชิก",
     amount: 82000,
   };
+  let evidenceReply: string | null = null;
+  let timingCalls = 0;
   let classification: ReturnType<typeof intentResponse> | undefined;
   const stage = (intent: string, fields: Record<string, unknown> = {}) => {
     classification = intentResponse(intent, fields);
@@ -1425,6 +1431,36 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
       const req = JSON.parse(init.body);
       if (req.tool_choice?.function?.name === "interpret_merchant_request")
         return Response.json(classification);
+      if (req.tool_choice?.function?.name === "read_preview_instruction") {
+        timingCalls++;
+        assert.equal(req.tools.length, 1);
+        const messages = req.messages;
+        assert.equal(
+          messages.at(-1).tool_call_id,
+          messages.at(-2).tool_calls[0].id,
+        );
+        return Response.json({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: crypto.randomUUID(),
+                    type: "function",
+                    function: {
+                      name: "read_preview_instruction",
+                      arguments: JSON.stringify({
+                        deferPreviewQuote: evidenceReply,
+                      }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      }
       if (req.tool_choice?.function?.name === "create_payment_link")
         return Response.json({
           choices: [
@@ -1518,7 +1554,12 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
     // The same edit can include a separate instruction to hold. Its saved expiry
     // also stays editable without resuming the proposal or restoring the old QR link.
     const editedAgain = "ขอแก้เป็นพรุ่งนี้ แล้วพักข้อเสนอไว้ก่อน";
-    stage("create", { expiryOnlyUtc: expiry, expiryChangeQuote: "พรุ่งนี้" });
+    stage("create", {
+      expiryOnlyUtc: expiry,
+      expiryChangeQuote: "พรุ่งนี้",
+      deferPreview: true,
+      deferPreviewQuote: "พักข้อเสนอไว้ก่อน",
+    });
     const held = (await send(editedAgain, original.id)).value;
     assert.equal(held.nextAction, "PREPARE_PREVIEW");
     assert.equal(pending(held).length, 0);
@@ -1546,6 +1587,73 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
       "NEEDS_INPUT",
     );
 
+    for (const [edit, expiryQuote, holdQuote, initialEvidence] of [
+      [
+        "Move the expiry to two hours from now, but please wait before preparing the preview.",
+        "two hours from now",
+        "please wait before preparing the preview",
+        "two hours from now",
+      ],
+      [
+        "ขอเปลี่ยนเป็นอีก 2 ชั่วโมง แต่ชะลอการเตรียมข้อเสนอไว้ก่อน",
+        "อีก 2 ชั่วโมง",
+        "ชะลอการเตรียมข้อเสนอไว้ก่อน",
+        undefined,
+      ],
+    ] as const) {
+      stage("create", { terms: base });
+      const bound = (await send("รับเงิน 500 บาท จากลูกค้าชื่อวิชัย สำหรับมัดจำบ้าน"))
+        .value;
+      // A misplaced or absent quote may be repaired only by the read-only native tool.
+      stage("create", {
+        terms: { ...base, expires: twoHours },
+        expiryChangeQuote: expiryQuote,
+        deferPreview: true,
+        deferPreviewQuote: initialEvidence,
+      });
+      evidenceReply = holdQuote;
+      const callsBefore = timingCalls;
+      const parked = (await send(edit, bound.id)).value;
+      assert.equal(timingCalls, callsBefore + 1);
+      assert.equal(parked.id, bound.id);
+      assert.equal(parked.nextAction, "PREPARE_PREVIEW");
+      assert.match(parked.summary, /วิชัย.*มัดจำบ้าน.*500.*QR.*12:00/);
+      assert.equal(pending(parked).length, 0);
+      assert.equal(
+        (
+          await api("decision", {
+            actionId: pending(bound)[0].id,
+            approve: true,
+          })
+        ).value.status,
+        "REJECTED",
+      );
+      const back = (await send("เตรียมข้อเสนอจากข้อมูลนี้", bound.id)).value;
+      assert.equal(back.status, "AWAITING_APPROVAL");
+      assert.deepEqual(
+        pending(back).map((a) => a.payload),
+        [{ ...base, expires: twoHours }],
+      );
+      assert.deepEqual(await counts(), before);
+    }
+    // A quote from a different turn remains unverified even after the single repair.
+    stage("create", { terms: base });
+    const retry = (await send("รับเงิน 500 บาท จากลูกค้าชื่อวิชัย สำหรับมัดจำบ้าน")).value;
+    evidenceReply = "hold the old preview";
+    stage("create", {
+      deferPreview: true,
+      deferPreviewQuote: "มัดจำบ้าน",
+      expiryChangeQuote: duration,
+      expiryOnlyUtc: twoHours,
+    });
+    const beforeRetry = timingCalls;
+    const unresolved = (await send(duration, retry.id)).value;
+    assert.equal(timingCalls, beforeRetry + 1);
+    assert.equal(unresolved.status, "NEEDS_INPUT");
+    assert.equal(unresolved.nextAction, "REPLY");
+    assert.equal(pending(unresolved).length, 0);
+    assert.deepEqual(await counts(), before);
+    evidenceReply = null;
     stage("purchase");
     const home = (await send("ต้องการซื้อบ้าน ภายใน 2 ชม ราคา 5000")).value;
     stage("create", { terms: { ...base, expires: twoHours } });

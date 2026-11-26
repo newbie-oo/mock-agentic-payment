@@ -103,3 +103,9 @@ On b863776 both QA paraphrases produced a pending proposal even though the model
 The fixed-clock HTTP regression covers “please wait before preparing the preview” and “แต่ชะลอการเตรียมข้อเสนอไว้ก่อน”. Both produce a recap at 12:00 Bangkok, zero pending proposals and a rejected previous action. Explicit preparation in the same run restores one ฿500 QR preview with the revised expiry. The earlier incorrect hold flag on a plain duration edit yields one replacement preview. The ledger counts stay constant throughout. Separate assertions cover missing, overlapping, stale and unsupported quotes. The recorded recap fixture also exercises recovery when the original model supplied neither a hold quote nor updated terms.
 
 Run `npm run typecheck && npm test && npm run build`. For the mobile Chrome flow, set `CHROME_PATH` to the local Chrome binary and run `node scripts/held-recap-smoke.mjs`. These checks use disposable SQLite files. Independent QA owns the live replay.
+
+### Rejected deadline as hold evidence (card 5)
+
+The synthetic production-handler regression on 8bcea76 returned NEEDS_INPUT for `อีก 2 ชม.นะ ไม่ใช่ 2 วัน` when the first tool call treated `ไม่ใช่ 2 วัน` as a hold. The timing tool now reviews a claimed hold on an expiry edit even when the two quotes do not overlap. Returning null stages one replacement for วิชัย, 50,000 satang, มัดจำบ้าน, QR and the two-hour expiry. The previous action rejects approval, and the order, link, attempt and notification counts stay unchanged. The Thai and English explicit-hold controls still show a non-executable recap and resume in the same run. The test uses a provider fixture and a private SQLite database.
+
+Reproduce with `node_modules/.bin/tsx --test --test-name-pattern='native HTTP resolves missing terms' tests/collection.test.ts`. Typecheck, all 29 tests and the production build passed.

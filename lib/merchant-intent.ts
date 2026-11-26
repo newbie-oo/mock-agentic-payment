@@ -157,7 +157,7 @@ export const timingTool = {
   function: {
     name: "read_preview_instruction",
     description:
-      "Read the latest merchant message only. If they explicitly want to wait before preparing a checkout preview, quote that separate instruction. Otherwise return null. Timing of payment is distinct from timing of preview preparation.",
+      "Read the latest merchant message only. Quote an explicit request to postpone preparation of the preview. Return null when the message only changes a payment deadline, including when it rejects an alternative deadline.",
     parameters: z.toJSONSchema(timingEvidence, {
       io: "input",
       target: "draft-7",
@@ -286,8 +286,13 @@ export function interpret(
       /\p{L}/u.test(quote) &&
       !quote.includes("\0") &&
       available.includes(quote);
+    // Two distinct quotes may identify the requested and rejected payment deadlines.
+    if (
+      !timingReviewed &&
+      (!grounded || intent.expiryChangeQuote || intent.expiryOnlyUtc)
+    )
+      return { intent, needsHoldEvidence: true };
     if (!grounded) {
-      if (!timingReviewed) return { intent, needsHoldEvidence: true };
       return ask(
         "ต้องการพักรายการนี้ไว้ก่อน หรือเตรียมข้อเสนอเพื่อตรวจสอบ?",
         "Should I keep these changes on hold or prepare a preview for review?",

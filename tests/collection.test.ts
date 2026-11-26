@@ -1307,6 +1307,7 @@ test("the native interpretation can edit a complete reviewed preview without rep
         ...ctx,
         latest: english + " Hold the preview.",
       },
+      true,
     ).summary?.startsWith("HELD_INPUT "),
   );
   assert.equal(
@@ -1560,6 +1561,7 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
       deferPreview: true,
       deferPreviewQuote: "พักข้อเสนอไว้ก่อน",
     });
+    evidenceReply = "พักข้อเสนอไว้ก่อน";
     const held = (await send(editedAgain, original.id)).value;
     assert.equal(held.nextAction, "PREPARE_PREVIEW");
     assert.equal(pending(held).length, 0);
@@ -1592,7 +1594,7 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
         "Move the expiry to two hours from now, but please wait before preparing the preview.",
         "two hours from now",
         "please wait before preparing the preview",
-        "two hours from now",
+        "please wait before preparing the preview",
       ],
       [
         "ขอเปลี่ยนเป็นอีก 2 ชั่วโมง แต่ชะลอการเตรียมข้อเสนอไว้ก่อน",
@@ -1604,7 +1606,7 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
       stage("create", { terms: base });
       const bound = (await send("รับเงิน 500 บาท จากลูกค้าชื่อวิชัย สำหรับมัดจำบ้าน"))
         .value;
-      // A misplaced or absent quote may be repaired only by the read-only native tool.
+      // The read-only timing tool checks both supplied and missing hold quotes.
       stage("create", {
         terms: { ...base, expires: twoHours },
         expiryChangeQuote: expiryQuote,
@@ -1636,6 +1638,37 @@ test("native HTTP resolves missing terms, expiry edits, method selection and aff
       );
       assert.deepEqual(await counts(), before);
     }
+    // QA negative control: two disjoint quotes can both refer to the deadline.
+    stage("create", { terms: base });
+    const originalControl = (
+      await send("รับเงิน 500 บาท จากลูกค้าชื่อวิชัย สำหรับมัดจำบ้าน")
+    ).value;
+    evidenceReply = null;
+    stage("create", {
+      expiryOnlyUtc: twoHours,
+      expiryChangeQuote: "อีก 2 ชม.",
+      deferPreview: true,
+      deferPreviewQuote: "ไม่ใช่ 2 วัน",
+    });
+    const checkedBefore = timingCalls;
+    const control = await send(duration, originalControl.id);
+    assert.equal(control.code, 200);
+    assert.equal(control.value.status, "AWAITING_APPROVAL");
+    assert.equal(timingCalls, checkedBefore + 1);
+    assert.deepEqual(
+      pending(control.value).map((a) => a.payload),
+      [{ ...base, expires: twoHours }],
+    );
+    assert.equal(
+      (
+        await api("decision", {
+          actionId: pending(originalControl)[0].id,
+          approve: true,
+        })
+      ).value.status,
+      "REJECTED",
+    );
+    assert.deepEqual(await counts(), before);
     // A quote from a different turn remains unverified even after the single repair.
     stage("create", { terms: base });
     const retry = (await send("รับเงิน 500 บาท จากลูกค้าชื่อวิชัย สำหรับมัดจำบ้าน")).value;
